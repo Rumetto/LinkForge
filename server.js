@@ -18,6 +18,11 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 
 // -----------------------
 // Config
@@ -32,7 +37,12 @@ const FREE_AFTER_DOWNLOAD = String(process.env.FREE_AFTER_DOWNLOAD || "1") !== "
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
-app.use(express.static(process.cwd()));
+app.use(express.static(__dirname, {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css; charset=utf-8");
+  },
+}));
+
 app.get("/", (req, res) => {
   res.sendFile(path.join(process.cwd(), "index.html"));
 });
