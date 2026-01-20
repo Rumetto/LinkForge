@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="styles.css?v=2">
+  <title>Link forge</title>
+</head>
+
+<body>
+ 
+
+  <main class="container">
+    <header class="header">
+      <h1 class="titolo">LinkForge</h1>
+      <p class="subtitle">
+        Scegli la modalità e scarica <b>Testo (PDF)</b> oppure <b>Immagini (ZIP)</b>.
+      </p>
+    </header>
+
+    <section class="card">
+      <div class="modes" id="modes">
+        <label class="mode">
+          <input type="radio" name="mode" value="single" checked />
+          <span>Solo questa pagina</span>
+        </label>
+
+        <label class="mode">
+          <input type="radio" name="mode" value="list" />
+          <span>Lista di pagine</span>
+        </label>
+
+        <label class="mode">
+          <input type="radio" name="mode" value="site" />
+          <span>Tutto il sito</span>
+        </label>
+      </div>
+
+      <div class="modes" id="outputModes" style="margin-top: 10px;">
+        <label class="mode">
+          <input type="radio" name="output" value="text" checked />
+          <span>Testo (PDF)</span>
+        </label>
+
+        <label class="mode">
+          <input type="radio" name="output" value="images" />
+          <span>Immagini (ZIP)</span>
+        </label>
+      </div>
+
+      <!-- SINGLE -->
+      <div id="panel-single" class="panel row">
+        <div>
+          <label for="singleUrl">URL pagina</label>
+          <input id="singleUrl" placeholder="https://..." />
+        </div>
+      </div>
+
+      <!-- LIST -->
+      <div id="panel-list" class="panel row hidden">
+        <div>
+          <label for="listUrls">Incolla gli URL (uno per riga)</label>
+          <textarea
+            id="listUrls"
+            placeholder="https://sito.com/pagina-1&#10;https://sito.com/pagina-2"
+          ></textarea>
+        </div>
+      </div>
+
+      <!-- SITE -->
+      <div id="panel-site" class="panel row hidden">
+        <div>
+          <label for="startUrl">URL iniziale (home o sezione)</label>
+          <input id="startUrl" placeholder="https://..." />
+        </div>
+
+        <div class="grid2">
+          <div>
+            <label for="maxPages">Max pagine</label>
+            <input id="maxPages" type="number" min="1" max="200" value="25" />
+            <div class="hint">Limite massimo di pagine che il crawler può visitare.</div>
+          </div>
+
+          <div class="field">
+            <label>
+              Profondità link
+              <span class="hint-tooltip" role="tooltip">
+                Quanti livelli di link seguire a partire dalla pagina iniziale.
+              </span>
+            </label>
+
+            <!-- Dropdown custom FUNZIONANTE -->
+            <div class="depth-dd" id="depthDd">
+              <!-- valore reale inviato al server -->
+              <input type="hidden" id="maxDepth" value="2" />
+
+              <button
+                type="button"
+                class="depth-btn"
+                id="depthBtn"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                <span>2</span>
+                <span class="depth-caret">▾</span>
+              </button>
+
+              <div
+                class="depth-menu hidden"
+                id="depthMenu"
+                role="listbox"
+                aria-label="Profondità link"
+              >
+                <button type="button" class="depth-item" data-value="0" data-tip="0 = solo la pagina iniziale">0</button>
+                <button type="button" class="depth-item" data-value="1" data-tip="1 = anche i link dentro la pagina iniziale">1</button>
+                <button type="button" class="depth-item" data-value="2" data-tip="2 = anche i link dei link (consigliato)">2</button>
+                <button type="button" class="depth-item" data-value="3" data-tip="3 = più lento, spesso inutile">3</button>
+                <button type="button" class="depth-item" data-value="4" data-tip="4 = molto lento, rischi tante pagine">4</button>
+              </div>
+
+              <!-- tooltip che appare quando passi sui numeri -->
+              <div class="depth-tip hidden" id="depthTip" role="tooltip"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div>
+            <label for="includePatterns">Include (opzionale)</label>
+            <input id="includePatterns" placeholder="/blog/ , /docs/" />
+            <div class="hint">Scarica solo le pagine che contengono queste parole nel percorso URL.</div>
+          </div>
+
+          <div>
+            <label for="excludePatterns">Exclude (opzionale)</label>
+            <input id="excludePatterns" placeholder="/privacy, /login" />
+            <div class="hint">Esclude solo le pagine che contengono queste parole nel percorso URL.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- IMAGES extra -->
+      <div id="panel-images" class="panel row hidden">
+        <div>
+          <label for="minKB">Min KB immagine</label>
+          <input id="minKB" type="number" min="0" value="50" />
+         
+        </div>
+      </div>
+
+      <div class="actions" style="display:flex; gap:10px; align-items:center;">
+        <button id="btn" type="button">Avvia</button>
+        <button id="btnStop" class="hidden" type="button">Stop</button>
+      </div>
+
+      <div class="status">
+        <div class="statusTop">
+          <span class="msg" id="msg"></span>
+          <span class="pct" id="pct"></span>
+        </div>
+        <div class="bar">
+          <div class="barFill" id="barFill"></div>
+        </div>
+      </div>
+       <footer>
+  <a href="/privacy.html">Privacy</a> •
+  <a href="/terms.html">Termini</a>
+</footer>
+    </section>
+  
+
+  </main>
+
+  <script>
+   
+    // --- DOM refs
+    const btn = document.getElementById("btn");
+    const btnStop = document.getElementById("btnStop");
+
+    const msg = document.getElementById("msg");
+    const pctEl = document.getElementById("pct");
+    const fill = document.getElementById("barFill");
+
+    const panels = {
+      single: document.getElementById("panel-single"),
+      list: document.getElementById("panel-list"),
+      site: document.getElementById("panel-site"),
+    };
+
+    const panelImages = document.getElementById("panel-images");
+
+    // --- State
+    let currentJobId = null;
+    let es = null;
+    let currentBlobUrl = null;
+
+    // --- Helpers
+    function getMode() {
+      return document.querySelector('input[name="mode"]:checked').value;
+    }
+
+    function getOutput() {
+      return document.querySelector('input[name="output"]:checked').value; // "text" | "images"
+    }
+
+    function setProgress(p, text) {
+      const v = Math.max(0, Math.min(100, Number(p) || 0));
+      if (fill) fill.style.width = v + "%";
+      if (pctEl) pctEl.textContent = v ? v.toFixed(0) + "%" : "";
+      if (msg) msg.textContent = text || "";
+    }
+
+    function setRunningUI(isRunning) {
+      if (btn) btn.disabled = isRunning;
+      if (btnStop) btnStop.classList.toggle("hidden", !isRunning);
+    }
+
+    function cleanupEventSource() {
+      if (es) {
+        try { es.close(); } catch {}
+        es = null;
+      }
+    }
+
+    function cleanupDownloadBlob() {
+      if (currentBlobUrl) {
+        try { URL.revokeObjectURL(currentBlobUrl); } catch {}
+        currentBlobUrl = null;
+      }
+    }
+
+    function removeDownloadLink() {
+      const dl = document.getElementById("downloadLink");
+      if (dl) dl.remove();
+    }
+
+    function showPanel(mode) {
+      Object.entries(panels).forEach(([k, el]) => {
+        if (!el) return;
+        el.classList.toggle("hidden", k !== mode);
+      });
+      setProgress(0, "");
+    }
+
+    function toggleImagesPanel() {
+      const out = getOutput();
+      if (panelImages) panelImages.classList.toggle("hidden", out !== "images");
+    }
+
+    function parseCsvList(str) {
+      return String(str || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    // --- init panel switching
+    const modesEl = document.getElementById("modes");
+    if (modesEl) modesEl.addEventListener("change", () => showPanel(getMode()));
+
+    const outputEl = document.getElementById("outputModes");
+    if (outputEl) outputEl.addEventListener("change", () => toggleImagesPanel());
+
+    showPanel(getMode());
+    toggleImagesPanel();
+
+    // --- STOP
+    if (btnStop) {
+      btnStop.addEventListener("click", async () => {
+        if (!currentJobId) return;
+
+        cleanupEventSource();
+
+        try {
+          setProgress(0, "Stop in corso...");
+          await fetch(`/api/stop/${currentJobId}`, { method: "POST" }).catch(() => {});
+        } finally {
+          setRunningUI(false);
+          setProgress(0, "Job annullato.");
+          currentJobId = null;
+        }
+      });
+    }
+
+    // --- Depth custom dropdown (FUNZIONANTE)
+    (function initDepthDropdown() {
+      const dd = document.getElementById("depthDd");
+      if (!dd) return;
+
+      const hiddenInput = document.getElementById("maxDepth");
+      const btn = document.getElementById("depthBtn");
+      const menu = document.getElementById("depthMenu");
+      const tip = document.getElementById("depthTip");
+
+      if (!hiddenInput || !btn || !menu || !tip) {
+        console.error("Depth dropdown: elementi mancanti");
+        return;
+      }
+
+      function openMenu() {
+        menu.classList.remove("hidden");
+        btn.setAttribute("aria-expanded", "true");
+      }
+
+      function closeMenu() {
+        menu.classList.add("hidden");
+        btn.setAttribute("aria-expanded", "false");
+        hideTip();
+      }
+
+      function toggleMenu() {
+        const isOpen = !menu.classList.contains("hidden");
+        isOpen ? closeMenu() : openMenu();
+      }
+
+      function setValue(v) {
+        hiddenInput.value = String(v);
+        const labelSpan = btn.querySelector("span");
+        if (labelSpan) labelSpan.textContent = String(v);
+        closeMenu();
+      }
+
+      function showTip(text, anchorEl) {
+        if (!text) return;
+        tip.textContent = text;
+        tip.classList.remove("hidden");
+
+        const r = anchorEl.getBoundingClientRect();
+        const rDd = dd.getBoundingClientRect();
+
+        const top = (r.top - rDd.top) - 6;
+        const left = (r.right - rDd.left) + 10;
+
+        tip.style.top = `${top}px`;
+        tip.style.left = `${left}px`;
+      }
+
+      function hideTip() {
+        tip.classList.add("hidden");
+      }
+
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        toggleMenu();
+      });
+
+      menu.addEventListener("click", (e) => {
+        const item = e.target.closest(".depth-item");
+        if (!item) return;
+        const v = item.dataset.value;
+        setValue(v);
+      });
+
+      menu.addEventListener("mouseover", (e) => {
+        const item = e.target.closest(".depth-item");
+        if (!item) return;
+        showTip(item.dataset.tip || "", item);
+      });
+
+      menu.addEventListener("mouseout", (e) => {
+        const item = e.target.closest(".depth-item");
+        if (!item) return;
+        hideTip();
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!dd.contains(e.target)) closeMenu();
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeMenu();
+      });
+
+      const initial = hiddenInput.value || "2";
+      const labelSpan = btn.querySelector("span");
+      if (labelSpan) labelSpan.textContent = initial;
+      hiddenInput.value = initial;
+
+      closeMenu();
+    })();
+
+    // --- START
+    btn.addEventListener("click", async () => {
+      const mode = getMode();
+      const output = getOutput();
+
+      removeDownloadLink();
+      cleanupDownloadBlob();
+      cleanupEventSource();
+      setProgress(0, "");
+
+      let payload = null;
+
+      if (mode === "single") {
+        const url = document.getElementById("singleUrl").value.trim();
+        if (!url) return setProgress(0, "Inserisci un URL.");
+        payload = { mode, url };
+      }
+
+      if (mode === "list") {
+        const raw = document.getElementById("listUrls").value;
+        const urls = raw.split("\n").map((s) => s.trim()).filter(Boolean);
+        if (!urls.length) return setProgress(0, "Incolla almeno 1 URL (uno per riga).");
+        payload = { mode, urls };
+      }
+
+      if (mode === "site") {
+        const startUrl = document.getElementById("startUrl").value.trim();
+        if (!startUrl) return setProgress(0, "Inserisci lo start URL.");
+
+        const maxPages = Number(document.getElementById("maxPages").value || 25);
+        const maxDepth = Number(document.getElementById("maxDepth").value || 2);
+
+        const includePatterns = parseCsvList(document.getElementById("includePatterns").value);
+        const excludePatterns = parseCsvList(document.getElementById("excludePatterns").value);
+
+        payload = { mode, startUrl, maxPages, maxDepth, includePatterns, excludePatterns };
+      }
+
+      if (output === "images") {
+        payload.minKB = Number(document.getElementById("minKB").value || 0);
+      }
+
+      setRunningUI(true);
+      setProgress(1, "Creo job...");
+
+      try {
+        const startEndpoint = output === "images" ? "/api/images/start" : "/api/pdf/start";
+
+        const startRes = await fetch(startEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!startRes.ok) {
+          const j = await startRes.json().catch(() => ({}));
+          throw new Error(j.error || "Errore start");
+        }
+
+        const { jobId } = await startRes.json();
+        if (!jobId) throw new Error("jobId mancante");
+        currentJobId = jobId;
+
+        setProgress(2, "Avvio...");
+        es = new EventSource(`/api/events/${jobId}`);
+
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Timeout progress")), 10 * 60 * 1000);
+
+          es.onmessage = (ev) => {
+            try {
+              const data = JSON.parse(ev.data);
+              setProgress(data.percent, data.message);
+
+              if (data.status === "done") {
+                clearTimeout(timeout);
+                resolve();
+              } else if (data.status === "error") {
+                clearTimeout(timeout);
+                reject(new Error(data.message || "Errore"));
+              }
+            } catch {
+              clearTimeout(timeout);
+              reject(new Error("Evento progress non valido"));
+            }
+          };
+
+          es.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error("Connessione progress interrotta"));
+          };
+        });
+
+        cleanupEventSource();
+
+        if (!currentJobId) throw new Error("Job annullato.");
+
+        setProgress(100, output === "images" ? "Scarico ZIP..." : "Scarico PDF...");
+        const dlEndpoint = output === "images"
+          ? `/api/images/download/${jobId}`
+          : `/api/pdf/download/${jobId}`;
+
+        const dlRes = await fetch(dlEndpoint);
+        if (!dlRes.ok) {
+          const j = await dlRes.json().catch(() => ({}));
+          throw new Error(j.error || "Errore download");
+        }
+
+        const cd = dlRes.headers.get("Content-Disposition") || "";
+        let filename = output === "images" ? "images.zip" : "documento.pdf";
+        const m = cd.match(/filename="([^"]+)"/i);
+        if (m && m[1]) filename = m[1];
+
+        const blob = await dlRes.blob();
+        cleanupDownloadBlob();
+        currentBlobUrl = URL.createObjectURL(blob);
+
+        setProgress(100, "Pronto ✅");
+
+        let a = document.getElementById("downloadLink");
+        if (!a) {
+          a = document.createElement("a");
+          a.id = "downloadLink";
+          a.className = "downloadBtn";
+          a.textContent = output === "images" ? "Scarica ZIP" : "Scarica PDF";
+          a.style.display = "inline-block";
+          a.style.marginTop = "12px";
+          a.style.padding = "12px 16px";
+          a.style.borderRadius = "14px";
+          a.style.fontWeight = "800";
+          a.style.textDecoration = "none";
+          a.style.border = "1px solid rgba(255,255,255,.18)";
+          a.style.background = "rgba(255,255,255,.10)";
+          a.style.color = "rgba(245,247,255,.95)";
+
+          const statusEl = document.querySelector(".status") || msg?.parentElement;
+          statusEl?.appendChild(a);
+        } else {
+          a.textContent = output === "images" ? "Scarica ZIP" : "Scarica PDF";
+        }
+
+        a.href = currentBlobUrl;
+        a.download = filename;
+        a.onclick = () => setTimeout(() => cleanupDownloadBlob(), 15000);
+
+      } catch (e) {
+        cleanupEventSource();
+        setProgress(0, "Errore: " + (e?.message || e));
+      } finally {
+        setRunningUI(false);
+        currentJobId = null;
+      }
+    });
+  </script>
+</body>
+</html>
