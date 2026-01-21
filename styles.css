@@ -651,3 +651,5 @@ footer{
 
   footer{ margin-top: 12px !important; padding-bottom: 16px !important; }
 }
+
+body{ outline: 6px solid red !important; }
