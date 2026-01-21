@@ -567,7 +567,8 @@ footer{
   /* NO scroll pagina */
   html, body{
     height: 100%;
-    overflow: hidden !important;
+    overflow: visible!important;
+    padding:5px;
   }
 
   /* HEADER: nel flow (niente overlap) */
