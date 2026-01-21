@@ -39,36 +39,40 @@
 
   /* layout sizing (SOLO dimensioni) */
   --header-top: 65px;
-  --header-gap: 16px;          /* spazio tra header e card */
-  --container-pad-x: 18px;
-  --container-pad-b: 18px;
+  --gap-under-header: 22px;
 
-  /* altezza “riservata” all’header (titolo + sottotitolo) */
-  --header-reserve: 150px;     /* desktop */
+  /* IMPORTANT: questa è la “riserva” reale per evitare sovrapposizioni */
+  --header-reserve: 210px; /* ↑ aumentata (prima era troppo bassa) */
+
+  --pad-x: 18px;
+  --pad-b: 18px;
 }
 
 @media (max-width: 520px){
   :root{
-    --header-top: 14px;
-    --header-reserve: 130px;   /* mobile più compatto */
-    --container-pad-x: 14px;
-    --container-pad-b: 14px;
+    --header-top: 16px;
+    --header-reserve: 190px;
+    --pad-x: 14px;
+    --pad-b: 14px;
   }
 }
 
 /* ---------- Reset ---------- */
 *{ box-sizing:border-box; }
-html, body{ height:100%; }
+html, body{
+  height: 100%;
+  overflow: hidden; /* FIX: blocca scroll anche su html */
+}
 
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--ink);
 
-  /* NO scroll pagina */
+  /* FIX: no page scroll */
   overflow: hidden;
 
-  /* premium blue background (works with white card) */
+  /* premium blue background */
   background:
     radial-gradient(1200px 700px at 20% 10%, rgba(18,131,255,.14), transparent 60%),
     radial-gradient(1000px 640px at 85% 25%, rgba(11,42,90,.12), transparent 58%),
@@ -92,14 +96,13 @@ button{
 
 /* ---------- Header fixed ---------- */
 .header{
-  position: fixed;            /* FIX: davvero fixed */
+  position: fixed;
   left: 0;
   right: 0;
   top: var(--header-top);
   z-index: 30;
   text-align: center;
 
-  /* non blocca i click sotto */
   pointer-events: none;
 }
 .header *{ pointer-events: auto; }
@@ -111,7 +114,6 @@ button{
   letter-spacing: -0.06em;
   font-weight: 950;
 
-  /* subtle blue sheen (professional) */
   background: linear-gradient(180deg, #0B1220 0%, #0B2A5A 55%, #0B1220 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -138,18 +140,19 @@ button{
   color: rgba(82,96,117,.92);
   line-height: 1.65;
 }
-
 .titolo{ text-align:center; }
 
 /* ---------- Main container (stable layout) ---------- */
 .container{
   width: 100%;
-  height: 100vh;                 /* FIX: tutto nella viewport */
+  height: 100dvh;              /* FIX: più stabile di 100vh */
   display: grid;
-  place-items: start center;      /* card sotto header */
-  padding: 0 var(--container-pad-x);
-  padding-top: calc(var(--header-reserve) + var(--header-gap));
-  padding-bottom: var(--container-pad-b);
+  place-items: start center;
+
+  padding: 0 var(--pad-x);
+  padding-top: calc(var(--header-reserve) + var(--gap-under-header));
+  padding-bottom: var(--pad-b);
+
   margin: 0 auto;
   position: relative;
 }
@@ -158,8 +161,8 @@ button{
 .container::before{
   content:"";
   position: absolute;
-  left: var(--container-pad-x);
-  right: var(--container-pad-x);
+  left: var(--pad-x);
+  right: var(--pad-x);
   top: 50px;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(11,18,32,.18), transparent);
@@ -169,7 +172,7 @@ button{
 
 /* ---------- Card ---------- */
 .card{
-  width: min(var(--containerW), calc(100vw - (var(--container-pad-x) * 2)));
+  width: min(var(--containerW), calc(100vw - (var(--pad-x) * 2)));
   border-radius: var(--r22);
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255,255,255,.95), #FFFFFF);
@@ -177,18 +180,18 @@ button{
   padding: 18px;
   position: relative;
 
-  /* FIX: card sempre dentro viewport */
+  /* FIX: sempre dentro lo schermo */
   max-height: calc(
-    100vh
-    - (var(--header-reserve) + var(--header-gap))
-    - var(--container-pad-b)
+    100dvh
+    - (var(--header-reserve) + var(--gap-under-header))
+    - var(--pad-b)
   );
 
-  /* FIX: scroll SOLO nella card se serve */
+  /* FIX: scroll solo qui se serve */
   overflow: auto;
 }
 
-/* scrollbar (optional, nice) */
+/* scrollbar */
 .card::-webkit-scrollbar{ width: 10px; }
 .card::-webkit-scrollbar-thumb{
   background: rgba(11,42,90,.18);
@@ -335,7 +338,6 @@ input:focus, textarea:focus, select:focus{
   box-shadow: 0 20px 46px rgba(10,58,138,.18);
   transition: transform .12s ease, filter .18s ease, box-shadow .18s ease;
 }
-
 .actions button:hover{
   transform: translateY(-1px);
   filter: brightness(1.03);
@@ -380,19 +382,16 @@ input:focus, textarea:focus, select:focus{
   font-weight: 850;
   color: rgba(11,18,32,.86);
 }
-
 .msg:not(:empty){
   padding: 9px 11px;
   border-radius: 12px;
   border: 1px solid rgba(18,131,255,.22);
   background: rgba(18,131,255,.10);
 }
-
 .pct{
   font-weight: 950;
   color: rgba(11,18,32,.72);
 }
-
 .bar{
   height: 12px;
   border-radius: 999px;
@@ -400,7 +399,6 @@ input:focus, textarea:focus, select:focus{
   overflow:hidden;
   border: 1px solid rgba(11,18,32,.10);
 }
-
 .barFill{
   height: 100%;
   width: 0%;
@@ -431,20 +429,17 @@ input:focus, textarea:focus, select:focus{
   box-shadow: inset 0 1px 0 rgba(11,18,32,.04);
   transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease, background .18s ease;
 }
-
 .depth-btn:hover{
   transform: translateY(-1px);
   box-shadow: var(--sh2);
   border-color: rgba(18,131,255,.45);
   background: #fff;
 }
-
 .depth-btn:focus{
   outline:none;
   border-color: rgba(18,131,255,.65);
   box-shadow: var(--ring);
 }
-
 .depth-caret{ opacity: .70; }
 
 .depth-menu{
@@ -472,7 +467,6 @@ input:focus, textarea:focus, select:focus{
   cursor:pointer;
   transition: background .14s ease, border-color .14s ease, transform .12s ease;
 }
-
 .depth-item:hover{
   background: rgba(18,131,255,.08);
   border-color: rgba(18,131,255,.18);
@@ -497,43 +491,6 @@ input:focus, textarea:focus, select:focus{
   pointer-events:none;
   box-shadow: 0 18px 55px rgba(0,0,0,.18);
 }
-
-/* ---------- Tooltip (if you add ? icon later) ---------- */
-.hint-icon{
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  font-size: 12px;
-  font-weight: 950;
-  cursor: help;
-  user-select: none;
-
-  border: 1px solid rgba(11,18,32,.18);
-  background: rgba(255,255,255,.90);
-  color: rgba(11,18,32,.82);
-}
-
-.hint-tooltip{
-  display:none;
-  position:absolute;
-  top: 130%;
-  left: 0;
-  max-width: 290px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.14);
-  background: rgba(11,18,32,.96);
-  color: rgba(255,255,255,.92);
-  font-size: 12px;
-  line-height: 1.35;
-  z-index: 1000;
-  box-shadow: 0 18px 55px rgba(0,0,0,.18);
-}
-.hint-icon:hover + .hint-tooltip,
-.hint-icon:focus + .hint-tooltip{ display:block; }
 
 /* ---------- Download button (created by JS) ---------- */
 #downloadLink{
@@ -572,68 +529,6 @@ footer{
   text-align: center;
   margin-top: 16px;
   padding-bottom: 14px;
-}
-
-/* =========================================================
-   Mobile optimization (SOLO dimensioni, non colori)
-   ========================================================= */
-@media (max-width: 520px){
-  .header{
-    top: var(--header-top);
-    padding: 0 14px;
-  }
-
-  .header h1{
-    font-size: 34px;
-  }
-
-  .muted{
-    font-size: 13px;
-    line-height: 1.55;
-  }
-
-  .container{
-    padding-top: calc(var(--header-reserve) + var(--header-gap));
-    padding-bottom: var(--container-pad-b);
-    place-items: start center;
-  }
-
-  .card{
-    padding: 14px;
-    max-height: calc(
-      100vh
-      - (var(--header-reserve) + var(--header-gap))
-      - var(--container-pad-b)
-    );
-    overflow: auto;
-  }
-
-  .modes{ gap: 8px; }
-
-  .mode{
-    padding: 9px 10px;
-    font-size: 14px;
-  }
-
-  input, textarea, select{
-    font-size: 16px; /* prevents iOS zoom */
-    padding: 12px 12px;
-  }
-
-  textarea{ min-height: 140px; }
-
-  .actions{
-    gap: 10px;
-    justify-content: center;
-  }
-
-  .actions button{
-    font-size: 12px;
-    letter-spacing: .08em;
-    padding: 12px 12px;
-  }
-
-  #btn, #btnStop{ width: 50%; }
 }
 
 /* ---------- Subtitle ---------- */
