@@ -178,7 +178,7 @@ button{
   background: linear-gradient(180deg, rgba(255,255,255,.95), #FFFFFF);
   box-shadow: var(--sh1);
   padding: 18px;
-  position: relative;
+  position: absolute;
   margin-top:50px;
   /* FIX: sempre dentro lo schermo */
   max-height: calc(
