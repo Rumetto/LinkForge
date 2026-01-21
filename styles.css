@@ -1,10 +1,8 @@
 /* =========================================================
-   LinkForge — Premium Blue Editorial UI (FULL CSS)
-   - Header fisso
-   - UI stabile (non balla cambiando pannelli)
-   - NO scroll pagina
-   - NO scroll card (tutto deve stare in pagina)
-   - Riduzione proporzionale di card + contenuti
+   LinkForge — Premium Blue Editorial UI (CLEAN CSS)
+   - Desktop: NO scroll pagina, NO scroll card (tutto deve stare in pagina)
+   - Mobile: scroll abilitato (necessario per usare AVVIA e campi lunghi)
+   - Card e contenuto centrati (NO scale che sposta a sinistra)
    ========================================================= */
 
 /* ---------- Tokens ---------- */
@@ -24,9 +22,8 @@
   --blue0:#0B2A5A;
   --blue1:#0A3A8A;
   --blue2:#1283FF;
-  --blueSoft: rgba(18,131,255,.12);
 
-  /* shadows / radius */
+  /* radius / shadows */
   --r14: 14px;
   --r18: 18px;
   --r22: 22px;
@@ -37,47 +34,40 @@
   --ring: 0 0 0 4px rgba(18,131,255,.18);
 
   /* sizing */
-  --containerW: 820px;          /* ↓ più piccolo (prima 980px) */
+  --containerW: 820px;
 
-  /* layout sizing (SOLO dimensioni) */
-  --header-top: 16px;           /* ↓ */
-  --headerH: 96px;              /* ↓ (spazio reale titolo+sottotitolo) */
-  --gap-under-header: 10px;     /* ↓ */
+  /* header sizing */
+  --header-top: 16px;
+  --headerH: 96px;
+  --gap-under-header: 10px;
 
+  /* padding */
   --pad-x: 16px;
   --pad-b: 14px;
 
-  /* scale (riduce tutto dentro la card) */
-  --ui-scale: .92;              /* ↓ riduzione proporzionale contenuti */
-}
-
-/* Mobile */
-@media (max-width: 520px){
-  :root{
-    --containerW: 92vw;
-    --header-top: 10px;
-    --headerH: 108px;
-    --gap-under-header: 10px;
-
-    --pad-x: 12px;
-    --pad-b: 12px;
-
-    --ui-scale: .90;
-  }
+  /* compact UI desktop */
+  --card-pad: 14px;
+  --gap: 10px;
+  --mt: 12px;
+  --label: 11px;
+  --input: 14px;
+  --btn: 12px;
 }
 
 /* ---------- Reset ---------- */
 *{ box-sizing:border-box; }
 html, body{
   height: 100%;
-  overflow: visible; 
+  overflow: hidden; /* desktop: niente scroll pagina */
 }
 
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--ink);
-  overflow: visible;
+
+  /* desktop: niente scroll */
+  overflow: hidden;
 
   background:
     radial-gradient(1200px 700px at 20% 10%, rgba(18,131,255,.14), transparent 60%),
@@ -86,6 +76,7 @@ body{
     linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 65%, var(--bg0) 100%);
   background-attachment: fixed;
 }
+
 ::selection{ background: rgba(18,131,255,.20); }
 
 button{
@@ -99,7 +90,7 @@ button{
   -webkit-appearance: none;
 }
 
-/* ---------- Header fixed ---------- */
+/* ---------- Header (fixed desktop) ---------- */
 .header{
   position: fixed;
   left: 0;
@@ -111,10 +102,9 @@ button{
 }
 .header *{ pointer-events: auto; }
 
-/* Titolo più piccolo */
 .header h1{
   margin: 0 0 6px 0;
-  font-size: clamp(26px, 3.1vw, 42px); /* ↓ */
+  font-size: clamp(26px, 3.1vw, 42px);
   line-height: 1.04;
   letter-spacing: -0.06em;
   font-weight: 950;
@@ -130,19 +120,18 @@ button{
 .header h1::after{
   content:"";
   display:block;
-  width: 60px;               /* ↓ */
+  width: 60px;
   height: 2px;
-  margin: 10px auto 0;       /* ↓ */
+  margin: 10px auto 0;
   border-radius: 999px;
   background: linear-gradient(90deg, transparent, rgba(18,131,255,.85), transparent);
   opacity: .95;
 }
 
-/* Subtitle più piccola */
 .subtitle{
   margin-top: 6px;
   text-align: center;
-  font-size: 0.95rem;        /* ↓ */
+  font-size: 0.95rem;
   font-weight: 500;
   letter-spacing: 0.2px;
   color: rgba(30, 40, 60, 0.65);
@@ -151,11 +140,11 @@ button{
   font-weight: 700;
   color: #1F2E4D;
   background: linear-gradient(90deg, rgba(47,107,255,0.18), rgba(0,198,255,0.12));
-  padding: 2px 7px;          /* ↓ */
+  padding: 2px 7px;
   border-radius: 10px;
 }
 
-/* ---------- Main container ---------- */
+/* ---------- Container ---------- */
 .container{
   width: 100%;
   height: 100dvh;
@@ -170,7 +159,6 @@ button{
   position: relative;
 }
 
-/* top hairline */
 .container::before{
   content:"";
   position: absolute;
@@ -183,51 +171,48 @@ button{
   pointer-events: none;
 }
 
-/* ---------- Card ---------- */
+/* ---------- Card (centered) ---------- */
 .card{
   width: min(var(--containerW), calc(100vw - (var(--pad-x) * 2)));
-  border-radius: 18px; /* ↓ */
+  border-radius: var(--r18);
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255,255,255,.95), #FFFFFF);
   box-shadow: var(--sh1);
 
-  padding: 14px;      /* ↓ */
-  position: relative;
+  padding: var(--card-pad);
   margin-top: 0;
 
-  /* NO scroll card */
-  overflow: visible;
+  /* desktop: niente scroll */
+  overflow: hidden;
 
-  /* resta sempre nel viewport */
+  /* entra nel viewport */
   max-height: calc(
     100dvh
     - (var(--header-top) + var(--headerH) + var(--gap-under-header))
     - var(--pad-b)
   );
+
+  /* centratura contenuto */
+  display: flex;
+  justify-content: center;
 }
 
-/* Riduzione proporzionale di TUTTO il contenuto della card */
 .card > *{
-  transform: scale(var(--ui-scale));
-  transform-origin: top left;
+  width: 100%;
+  max-width: 100%;
 }
 
-/* Compensazione spazio perso dal scale, così non “rientra” troppo */
-.card{
-  padding-bottom: 10px;
-}
-
-/* ---------- Rows / grids ---------- */
+/* ---------- Layout blocks ---------- */
 .row{
   display:grid;
-  gap: 10px;            /* ↓ */
-  margin-top: 12px;     /* ↓ */
+  gap: var(--gap);
+  margin-top: var(--mt);
 }
 
 .grid2{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;            /* ↓ */
+  gap: var(--gap);
 }
 @media (max-width: 760px){
   .grid2{ grid-template-columns: 1fr; }
@@ -236,29 +221,28 @@ button{
 /* ---------- Labels + hints ---------- */
 label{
   font-weight: 900;
-  font-size: 11px;      /* ↓ */
+  font-size: var(--label);
   letter-spacing: .08em;
-  margin-bottom: 6px;   /* ↓ */
+  margin-bottom: 6px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   color: rgba(11,18,32,.86);
   text-transform: uppercase;
-  position: relative;
 }
 
 .hint{
-  margin-top: 6px;      /* ↓ */
+  margin-top: 6px;
   color: rgba(82,96,117,.92);
-  font-size: 11px;      /* ↓ */
+  font-size: 11px;
   line-height: 1.35;
 }
 
 /* ---------- Inputs ---------- */
 input, textarea, select{
   width:100%;
-  padding: 11px 12px;   /* ↓ */
-  font-size: 14px;      /* ↓ */
+  padding: 11px 12px;
+  font-size: var(--input);
   border-radius: var(--r14);
   border: 1px solid var(--line2);
   background: rgba(255,255,255,.98);
@@ -270,7 +254,7 @@ input, textarea, select{
 }
 
 textarea{
-  min-height: 110px; /* ↓ per non sforare */
+  min-height: 110px;
   resize: none;
 }
 
@@ -289,14 +273,15 @@ input:focus, textarea:focus, select:focus{
 .modes{
   display:flex;
   flex-wrap: wrap;
-  gap: 8px; /* ↓ */
+  gap: 8px;
+  justify-content: center; /* centra i gruppi */
 }
 
 .mode{
   display:flex;
   align-items:center;
-  gap: 8px; /* ↓ */
-  padding: 8px 10px; /* ↓ */
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: rgba(255,255,255,.70);
@@ -305,7 +290,7 @@ input:focus, textarea:focus, select:focus{
 
   transition: transform .12s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
   box-shadow: 0 1px 0 rgba(11,18,32,.05);
-  font-size: 13px; /* ↓ */
+  font-size: 13px;
 }
 
 .mode:hover{
@@ -332,19 +317,19 @@ input:focus, textarea:focus, select:focus{
 /* ---------- Actions ---------- */
 .actions{
   display:flex;
-  gap: 10px;        /* ↓ */
+  gap: 10px;
   align-items:center;
-  margin-top: 12px; /* ↓ */
+  margin-top: 12px;
 }
 
 #btn, #btnStop{ width: 50%; }
 
 .actions button{
   width:100%;
-  padding: 11px 12px; /* ↓ */
+  padding: 11px 12px;
   border-radius: var(--r14);
   cursor:pointer;
-  font-size: 12px;    /* ↓ */
+  font-size: var(--btn);
   font-weight: 950;
   letter-spacing: .10em;
   text-transform: uppercase;
@@ -369,7 +354,6 @@ input:focus, textarea:focus, select:focus{
   box-shadow: none;
 }
 
-/* Stop outlined */
 #btnStop{
   background: rgba(255,255,255,.80);
   color: rgba(11,18,32,.92);
@@ -378,13 +362,13 @@ input:focus, textarea:focus, select:focus{
 }
 #btnStop:hover{ background: rgba(255,255,255,.95); }
 
-/* ---------- Status / progress ---------- */
+/* ---------- Status ---------- */
 .status{
-  margin-top: 12px; /* ↓ */
+  margin-top: 12px;
   border-radius: var(--r18);
   border: 1px solid var(--line);
   background: rgba(255,255,255,.74);
-  padding: 10px;    /* ↓ */
+  padding: 10px;
   box-shadow: 0 12px 30px rgba(11,18,32,.08);
 }
 
@@ -393,16 +377,16 @@ input:focus, textarea:focus, select:focus{
   align-items:center;
   justify-content:space-between;
   gap: 10px;
-  margin-bottom: 8px; /* ↓ */
+  margin-bottom: 8px;
 }
 
 .msg{
   font-weight: 850;
   color: rgba(11,18,32,.86);
-  font-size: 13px; /* ↓ */
+  font-size: 13px;
 }
 .msg:not(:empty){
-  padding: 7px 9px; /* ↓ */
+  padding: 7px 9px;
   border-radius: 12px;
   border: 1px solid rgba(18,131,255,.22);
   background: rgba(18,131,255,.10);
@@ -411,14 +395,14 @@ input:focus, textarea:focus, select:focus{
 .pct{
   font-weight: 950;
   color: rgba(11,18,32,.72);
-  font-size: 13px; /* ↓ */
+  font-size: 13px;
 }
 
 .bar{
-  height: 10px; /* ↓ */
+  height: 10px;
   border-radius: 999px;
   background: rgba(11,18,32,.07);
-  overflow:visible;
+  overflow:hidden;
   border: 1px solid rgba(11,18,32,.10);
 }
 .barFill{
@@ -429,93 +413,7 @@ input:focus, textarea:focus, select:focus{
   transition: width .18s ease;
 }
 
-/* ---------- Depth dropdown ---------- */
-.field{ display:flex; flex-direction: column; }
-.depth-dd{ position: relative; }
-
-.depth-btn{
-  width:100%;
-  display:flex;
-  align-items:center;
-  justify-content: space-between;
-  gap: 10px;
-
-  padding: 11px 12px; /* ↓ */
-  border-radius: var(--r14);
-  border: 1px solid var(--line2);
-  background: rgba(255,255,255,.98);
-  color: var(--ink);
-  cursor: pointer;
-  user-select:none;
-
-  box-shadow: inset 0 1px 0 rgba(11,18,32,.04);
-  transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease, background .18s ease;
-  font-size: 14px; /* ↓ */
-}
-.depth-btn:hover{
-  transform: translateY(-1px);
-  box-shadow: var(--sh2);
-  border-color: rgba(18,131,255,.45);
-  background: #fff;
-}
-.depth-btn:focus{
-  outline:none;
-  border-color: rgba(18,131,255,.65);
-  box-shadow: var(--ring);
-}
-.depth-caret{ opacity: .70; }
-
-.depth-menu{
-  position:absolute;
-  left:0;
-  right:0;
-  top: calc(100% + 10px);
-  z-index: 80;
-
-  border-radius: var(--r14);
-  border: 1px solid var(--line);
-  background: #FFFFFF;
-  padding: 6px;
-  box-shadow: 0 26px 70px rgba(11,18,32,.18);
-}
-
-.depth-item{
-  width:100%;
-  text-align:left;
-  padding: 9px 10px; /* ↓ */
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: rgba(11,18,32,.92);
-  cursor:pointer;
-  transition: background .14s ease, border-color .14s ease, transform .12s ease;
-  font-size: 13px; /* ↓ */
-}
-.depth-item:hover{
-  background: rgba(18,131,255,.08);
-  border-color: rgba(18,131,255,.18);
-  transform: translateY(-1px);
-}
-
-.depth-tip{
-  position:absolute;
-  z-index: 90;
-  min-width: 220px;
-  max-width: 340px;
-  padding: 9px 10px; /* ↓ */
-  border-radius: 12px;
-
-  border: 1px solid rgba(255,255,255,.16);
-  background: rgba(11,18,32,.96);
-  color: rgba(255,255,255,.94);
-
-  font-size: 11px; /* ↓ */
-  line-height: 1.35;
-  pointer-events:none;
-  box-shadow: 0 18px 55px rgba(0,0,0,.18);
-}
-
-/* ---------- Download button (created by JS) ---------- */
+/* ---------- Download link ---------- */
 #downloadLink{
   display: inline-flex !important;
   align-items: center;
@@ -539,7 +437,7 @@ input:focus, textarea:focus, select:focus{
 
   cursor: pointer;
   transition: transform .12s ease, filter .18s ease, box-shadow .18s ease;
-  font-size: 12px; /* ↓ */
+  font-size: 12px;
 }
 #downloadLink:hover{
   transform: translateY(-1px);
@@ -551,51 +449,37 @@ input:focus, textarea:focus, select:focus{
 /* ---------- Footer ---------- */
 footer{
   text-align: center;
-  margin-top: 10px; /* ↓ */
-  padding-bottom: 10px; /* ↓ */
+  margin-top: 10px;
+  padding-bottom: 10px;
 }
 
-
-/* ===============================
-   MOBILE FIX (no overlap, no scale)
-   =============================== */
-/* ===============================
-   MOBILE FIX (NO SCROLL + AVVIA VISIBILE)
-   =============================== */
 /* =========================================================
-   MOBILE: abilita scroll (altrimenti non vedrai mai AVVIA e i campi sotto)
+   MOBILE (<= 520px)
+   - scroll attivo (necessario)
+   - header nel flow
+   - card centrata + full width
    ========================================================= */
 @media (max-width: 520px){
 
-  /* su mobile DEVI poter scorrere */
   html, body{
     height: auto !important;
     overflow: auto !important;
   }
   body{
-    -webkit-overflow-scrolling: touch;
     overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
   }
 
-  /* header nel flow, così non si sovrappone */
   .header{
     position: relative !important;
     top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    z-index: 2 !important;
     padding: 12px 12px 6px !important;
-    margin: 0 !important;
     pointer-events: auto !important;
   }
 
   .header h1{
-    font-size: 32px !important;      /* titolo più piccolo */
+    font-size: 32px !important;
     margin: 0 0 6px 0 !important;
-  }
-  .header h1::after{
-    width: 56px !important;
-    margin: 10px auto 0 !important;
   }
 
   .subtitle{
@@ -605,51 +489,54 @@ footer{
     margin: 4px 0 0 !important;
   }
 
-  /* container: non bloccare altezza, lascia scorrere */
   .container{
     height: auto !important;
     min-height: 100svh !important;
     padding: 0 12px 16px !important;
-    place-items: start center !important;
   }
   .container::before{ display:none !important; }
 
-  /* card: più piccola ma SENZA tagliare contenuti */
   .card{
     width: calc(100vw - 24px) !important;
     padding: 14px !important;
     margin-top: 10px !important;
     border-radius: 18px !important;
 
-    /* IMPORTANTISSIMO: niente limiti che “tagliano” */
     max-height: none !important;
     overflow: visible !important;
 
-    /* niente scale (sballa misure/click e può tagliare) */
-    transform: none !important;
+    display: block; /* su mobile evita comportamenti strani */
   }
 
-  /* rendi tutto un filo più compatto (in proporzione) */
-  .row{ gap: 10px !important; margin-top: 12px !important; }
-
-  label{ font-size: 11px !important; margin-bottom: 6px !important; }
-  .hint{ font-size: 11px !important; margin-top: 6px !important; }
-
-  .modes{ gap: 10px !important; }
-  .mode{ padding: 10px 12px !important; font-size: 14px !important; width: 100% !important; }
+  .modes{
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .mode{
+    width: 100%;
+    justify-content: flex-start;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
 
   input, textarea, select{
-    font-size: 16px !important;  /* evita zoom iOS */
+    font-size: 16px !important;
     padding: 12px 12px !important;
   }
   textarea{ min-height: 110px !important; }
 
-  .actions{ gap: 10px !important; margin-top: 12px !important; }
-  .actions button{ padding: 12px 12px !important; font-size: 12px !important; }
+  .actions{
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .actions button{
+    padding: 12px 12px;
+    font-size: 12px;
+  }
 
-  .status{ padding: 10px !important; margin-top: 12px !important; }
-
-  footer{ margin-top: 12px !important; padding-bottom: 16px !important; }
+  footer{
+    margin-top: 12px;
+    padding-bottom: 16px;
+  }
 }
-
-body{ outline: 6px solid red !important; }
