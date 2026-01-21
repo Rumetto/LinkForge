@@ -2,7 +2,9 @@
    LinkForge — Premium Blue Editorial UI (FULL CSS)
    - Header fisso
    - UI stabile (non balla cambiando pannelli)
-   - Nessuno scroll pagina, scroll SOLO dentro la card se serve
+   - NO scroll pagina
+   - NO scroll card (tutto deve stare in pagina)
+   - Riduzione proporzionale di card + contenuti
    ========================================================= */
 
 /* ---------- Tokens ---------- */
@@ -35,24 +37,32 @@
   --ring: 0 0 0 4px rgba(18,131,255,.18);
 
   /* sizing */
-  --containerW: 980px;
+  --containerW: 820px;          /* ↓ più piccolo (prima 980px) */
 
---header-top: 30px;          /* header più su */
---headerH: 120px;            /* altezza reale header (titolo + sottotitolo) */
---gap-under-header: 14px;    /* spazio piccolo sotto header */
+  /* layout sizing (SOLO dimensioni) */
+  --header-top: 16px;           /* ↓ */
+  --headerH: 96px;              /* ↓ (spazio reale titolo+sottotitolo) */
+  --gap-under-header: 10px;     /* ↓ */
 
+  --pad-x: 16px;
+  --pad-b: 14px;
 
-  --pad-x: 18px;
-  --pad-b: 18px;
+  /* scale (riduce tutto dentro la card) */
+  --ui-scale: .92;              /* ↓ riduzione proporzionale contenuti */
 }
 
+/* Mobile */
 @media (max-width: 520px){
   :root{
-    --header-top: 14px;
-    --headerH: 15px;
-     --gap-under-header: 12px;
-    --pad-x: 14px;
-    --pad-b: 14px;
+    --containerW: 92vw;
+    --header-top: 10px;
+    --headerH: 108px;
+    --gap-under-header: 10px;
+
+    --pad-x: 12px;
+    --pad-b: 12px;
+
+    --ui-scale: .90;
   }
 }
 
@@ -60,18 +70,15 @@
 *{ box-sizing:border-box; }
 html, body{
   height: 100%;
-  overflow: hidden; /* FIX: blocca scroll anche su html */
+  overflow: hidden; /* NO scroll pagina */
 }
 
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--ink);
-
-  /* FIX: no page scroll */
   overflow: hidden;
 
-  /* premium blue background */
   background:
     radial-gradient(1200px 700px at 20% 10%, rgba(18,131,255,.14), transparent 60%),
     radial-gradient(1000px 640px at 85% 25%, rgba(11,42,90,.12), transparent 58%),
@@ -79,7 +86,6 @@ body{
     linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 65%, var(--bg0) 100%);
   background-attachment: fixed;
 }
-
 ::selection{ background: rgba(18,131,255,.20); }
 
 button{
@@ -101,14 +107,14 @@ button{
   top: var(--header-top);
   z-index: 30;
   text-align: center;
-
   pointer-events: none;
 }
 .header *{ pointer-events: auto; }
 
+/* Titolo più piccolo */
 .header h1{
-  margin: 0 0 10px 0;
-  font-size: clamp(34px, 4vw, 56px);
+  margin: 0 0 6px 0;
+  font-size: clamp(26px, 3.1vw, 42px); /* ↓ */
   line-height: 1.04;
   letter-spacing: -0.06em;
   font-weight: 950;
@@ -124,33 +130,40 @@ button{
 .header h1::after{
   content:"";
   display:block;
-  width: 74px;
+  width: 60px;               /* ↓ */
   height: 2px;
-  margin: 14px auto 0;
+  margin: 10px auto 0;       /* ↓ */
   border-radius: 999px;
   background: linear-gradient(90deg, transparent, rgba(18,131,255,.85), transparent);
   opacity: .95;
 }
 
-.muted{
-  margin:0;
-  max-width: 72ch;
-  margin-inline:auto;
-  color: rgba(82,96,117,.92);
-  line-height: 1.65;
+/* Subtitle più piccola */
+.subtitle{
+  margin-top: 6px;
+  text-align: center;
+  font-size: 0.95rem;        /* ↓ */
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: rgba(30, 40, 60, 0.65);
 }
-.titolo{ text-align:center; }
+.subtitle b{
+  font-weight: 700;
+  color: #1F2E4D;
+  background: linear-gradient(90deg, rgba(47,107,255,0.18), rgba(0,198,255,0.12));
+  padding: 2px 7px;          /* ↓ */
+  border-radius: 10px;
+}
 
-/* ---------- Main container (stable layout) ---------- */
+/* ---------- Main container ---------- */
 .container{
   width: 100%;
-  height: 100dvh;              /* FIX: più stabile di 100vh */
+  height: 100dvh;
   display: grid;
   place-items: start center;
 
   padding: 0 var(--pad-x);
   padding-top: calc(var(--header-top) + var(--headerH) + var(--gap-under-header));
-
   padding-bottom: var(--pad-b);
 
   margin: 0 auto;
@@ -163,7 +176,7 @@ button{
   position: absolute;
   left: var(--pad-x);
   right: var(--pad-x);
-  top: calc(var(--header-top) + 10px);
+  top: calc(var(--header-top) + 8px);
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(11,18,32,.18), transparent);
   opacity: .95;
@@ -171,46 +184,50 @@ button{
 }
 
 /* ---------- Card ---------- */
-
 .card{
   width: min(var(--containerW), calc(100vw - (var(--pad-x) * 2)));
-  border-radius: var(--r22);
+  border-radius: 18px; /* ↓ */
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255,255,255,.95), #FFFFFF);
   box-shadow: var(--sh1);
-  padding: 18px;
+
+  padding: 14px;      /* ↓ */
   position: relative;
   margin-top: 0;
 
+  /* NO scroll card */
+  overflow: hidden;
+
+  /* resta sempre nel viewport */
   max-height: calc(
     100dvh
     - (var(--header-top) + var(--headerH) + var(--gap-under-header))
     - var(--pad-b)
   );
-
-  overflow: auto;
 }
 
-/* scrollbar */
-.card::-webkit-scrollbar{ width: 10px; }
-.card::-webkit-scrollbar-thumb{
-  background: rgba(11,42,90,.18);
-  border-radius: 999px;
-  border: 2px solid rgba(255,255,255,.85);
+/* Riduzione proporzionale di TUTTO il contenuto della card */
+.card > *{
+  transform: scale(var(--ui-scale));
+  transform-origin: top left;
 }
-.card::-webkit-scrollbar-track{ background: transparent; }
+
+/* Compensazione spazio perso dal scale, così non “rientra” troppo */
+.card{
+  padding-bottom: 10px;
+}
 
 /* ---------- Rows / grids ---------- */
 .row{
   display:grid;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;            /* ↓ */
+  margin-top: 12px;     /* ↓ */
 }
 
 .grid2{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;            /* ↓ */
 }
 @media (max-width: 760px){
   .grid2{ grid-template-columns: 1fr; }
@@ -219,9 +236,9 @@ button{
 /* ---------- Labels + hints ---------- */
 label{
   font-weight: 900;
-  font-size: 12px;
+  font-size: 11px;      /* ↓ */
   letter-spacing: .08em;
-  margin-bottom: 8px;
+  margin-bottom: 6px;   /* ↓ */
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -231,17 +248,17 @@ label{
 }
 
 .hint{
-  margin-top: 8px;
+  margin-top: 6px;      /* ↓ */
   color: rgba(82,96,117,.92);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11px;      /* ↓ */
+  line-height: 1.35;
 }
 
 /* ---------- Inputs ---------- */
 input, textarea, select{
   width:100%;
-  padding: 13px 14px;
-  font-size: 15px;
+  padding: 11px 12px;   /* ↓ */
+  font-size: 14px;      /* ↓ */
   border-radius: var(--r14);
   border: 1px solid var(--line2);
   background: rgba(255,255,255,.98);
@@ -253,7 +270,7 @@ input, textarea, select{
 }
 
 textarea{
-  min-height: 150px;
+  min-height: 110px; /* ↓ per non sforare */
   resize: none;
 }
 
@@ -272,14 +289,14 @@ input:focus, textarea:focus, select:focus{
 .modes{
   display:flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px; /* ↓ */
 }
 
 .mode{
   display:flex;
   align-items:center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px; /* ↓ */
+  padding: 8px 10px; /* ↓ */
   border-radius: 999px;
   border: 1px solid var(--line);
   background: rgba(255,255,255,.70);
@@ -288,6 +305,7 @@ input:focus, textarea:focus, select:focus{
 
   transition: transform .12s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
   box-shadow: 0 1px 0 rgba(11,18,32,.05);
+  font-size: 13px; /* ↓ */
 }
 
 .mode:hover{
@@ -314,19 +332,19 @@ input:focus, textarea:focus, select:focus{
 /* ---------- Actions ---------- */
 .actions{
   display:flex;
-  gap: 12px;
+  gap: 10px;        /* ↓ */
   align-items:center;
-  margin-top: 14px;
+  margin-top: 12px; /* ↓ */
 }
 
 #btn, #btnStop{ width: 50%; }
 
 .actions button{
   width:100%;
-  padding: 13px 16px;
+  padding: 11px 12px; /* ↓ */
   border-radius: var(--r14);
   cursor:pointer;
-  font-size: 13px;
+  font-size: 12px;    /* ↓ */
   font-weight: 950;
   letter-spacing: .10em;
   text-transform: uppercase;
@@ -362,11 +380,11 @@ input:focus, textarea:focus, select:focus{
 
 /* ---------- Status / progress ---------- */
 .status{
-  margin-top: 14px;
+  margin-top: 12px; /* ↓ */
   border-radius: var(--r18);
   border: 1px solid var(--line);
   background: rgba(255,255,255,.74);
-  padding: 12px;
+  padding: 10px;    /* ↓ */
   box-shadow: 0 12px 30px rgba(11,18,32,.08);
 }
 
@@ -374,26 +392,30 @@ input:focus, textarea:focus, select:focus{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: 10px;
+  margin-bottom: 8px; /* ↓ */
 }
 
 .msg{
   font-weight: 850;
   color: rgba(11,18,32,.86);
+  font-size: 13px; /* ↓ */
 }
 .msg:not(:empty){
-  padding: 9px 11px;
+  padding: 7px 9px; /* ↓ */
   border-radius: 12px;
   border: 1px solid rgba(18,131,255,.22);
   background: rgba(18,131,255,.10);
 }
+
 .pct{
   font-weight: 950;
   color: rgba(11,18,32,.72);
+  font-size: 13px; /* ↓ */
 }
+
 .bar{
-  height: 12px;
+  height: 10px; /* ↓ */
   border-radius: 999px;
   background: rgba(11,18,32,.07);
   overflow:hidden;
@@ -418,7 +440,7 @@ input:focus, textarea:focus, select:focus{
   justify-content: space-between;
   gap: 10px;
 
-  padding: 13px 14px;
+  padding: 11px 12px; /* ↓ */
   border-radius: var(--r14);
   border: 1px solid var(--line2);
   background: rgba(255,255,255,.98);
@@ -428,6 +450,7 @@ input:focus, textarea:focus, select:focus{
 
   box-shadow: inset 0 1px 0 rgba(11,18,32,.04);
   transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease, background .18s ease;
+  font-size: 14px; /* ↓ */
 }
 .depth-btn:hover{
   transform: translateY(-1px);
@@ -459,13 +482,14 @@ input:focus, textarea:focus, select:focus{
 .depth-item{
   width:100%;
   text-align:left;
-  padding: 10px 12px;
+  padding: 9px 10px; /* ↓ */
   border-radius: 12px;
   border: 1px solid transparent;
   background: transparent;
   color: rgba(11,18,32,.92);
   cursor:pointer;
   transition: background .14s ease, border-color .14s ease, transform .12s ease;
+  font-size: 13px; /* ↓ */
 }
 .depth-item:hover{
   background: rgba(18,131,255,.08);
@@ -473,20 +497,19 @@ input:focus, textarea:focus, select:focus{
   transform: translateY(-1px);
 }
 
-/* tooltip for items */
 .depth-tip{
   position:absolute;
   z-index: 90;
-  min-width: 230px;
-  max-width: 360px;
-  padding: 10px 12px;
+  min-width: 220px;
+  max-width: 340px;
+  padding: 9px 10px; /* ↓ */
   border-radius: 12px;
 
   border: 1px solid rgba(255,255,255,.16);
   background: rgba(11,18,32,.96);
   color: rgba(255,255,255,.94);
 
-  font-size: 12px;
+  font-size: 11px; /* ↓ */
   line-height: 1.35;
   pointer-events:none;
   box-shadow: 0 18px 55px rgba(0,0,0,.18);
@@ -499,8 +522,8 @@ input:focus, textarea:focus, select:focus{
   justify-content: center;
   gap: 10px;
 
-  margin-top: 14px !important;
-  padding: 12px 16px !important;
+  margin-top: 12px !important;
+  padding: 11px 12px !important;
 
   border-radius: var(--r14) !important;
   text-decoration: none !important;
@@ -516,6 +539,7 @@ input:focus, textarea:focus, select:focus{
 
   cursor: pointer;
   transition: transform .12s ease, filter .18s ease, box-shadow .18s ease;
+  font-size: 12px; /* ↓ */
 }
 #downloadLink:hover{
   transform: translateY(-1px);
@@ -527,23 +551,6 @@ input:focus, textarea:focus, select:focus{
 /* ---------- Footer ---------- */
 footer{
   text-align: center;
-  margin-top: 16px;
-  padding-bottom: 14px;
-}
-
-/* ---------- Subtitle ---------- */
-.subtitle{
-  margin-top: 10px;
-  text-align: center;
-  font-size: 1.05rem;
-  font-weight: 500;
-  letter-spacing: 0.2px;
-  color: rgba(30, 40, 60, 0.65);
-}
-.subtitle b{
-  font-weight: 700;
-  color: #1F2E4D;
-  background: linear-gradient(90deg, rgba(47,107,255,0.18), rgba(0,198,255,0.12));
-  padding: 2px 8px;
-  border-radius: 10px;
+  margin-top: 10px; /* ↓ */
+  padding-bottom: 10px; /* ↓ */
 }
