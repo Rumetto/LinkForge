@@ -563,7 +563,7 @@ footer{
 
   /* lascia che la pagina “componga” correttamente gli elementi */
   html, body{
-    overflow: hidden; /* rimane no-scroll pagina */
+    overflow: visible; /* rimane no-scroll pagina */
     height: 100%;
   }
 
