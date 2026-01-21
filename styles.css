@@ -49,7 +49,7 @@
 @media (max-width: 520px){
   :root{
     --header-top: 14px;
-    --headerH: 135px;
+    --headerH: 15px;
      --gap-under-header: 12px;
     --pad-x: 14px;
     --pad-b: 14px;
