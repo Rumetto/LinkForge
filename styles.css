@@ -70,14 +70,14 @@
 *{ box-sizing:border-box; }
 html, body{
   height: 100%;
-  overflow: hidden; /* NO scroll pagina */
+  overflow: visible; 
 }
 
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--ink);
-  overflow: hidden;
+  overflow: visible;
 
   background:
     radial-gradient(1200px 700px at 20% 10%, rgba(18,131,255,.14), transparent 60%),
@@ -196,7 +196,7 @@ button{
   margin-top: 0;
 
   /* NO scroll card */
-  overflow: hidden;
+  overflow: visible;
 
   /* resta sempre nel viewport */
   max-height: calc(
@@ -418,7 +418,7 @@ input:focus, textarea:focus, select:focus{
   height: 10px; /* ↓ */
   border-radius: 999px;
   background: rgba(11,18,32,.07);
-  overflow:hidden;
+  overflow:visible;
   border: 1px solid rgba(11,18,32,.10);
 }
 .barFill{
@@ -612,7 +612,7 @@ footer{
     margin-top: 6px !important;
 
     /* IMPORTANT: niente scroll nella card */
-    overflow: hidden !important;
+    overflow: visible !important;
 
     /* la card resta dentro lo schermo */
     max-height: calc(100svh - 130px) !important;
