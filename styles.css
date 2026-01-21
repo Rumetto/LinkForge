@@ -74,7 +74,7 @@ button{
    DESKTOP LAYOUT: no scroll pagina
    ========================================================= */
 @media (min-width: 521px){
-  html, body{ overflow:hidden; }
+  html, body{ overflow:visible; }
 }
 
 /* ---------- Header ---------- */
@@ -154,7 +154,7 @@ button{
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255,255,255,.95), #FFFFFF);
   box-shadow: var(--sh1);
-
+  overflow:visible;
   padding: 16px;
   margin-top: 0;
 
