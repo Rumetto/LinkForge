@@ -37,12 +37,10 @@
   /* sizing */
   --containerW: 980px;
 
-  /* layout sizing (SOLO dimensioni) */
-  --header-top: 65px;
-  --gap-under-header: 12px;
+--header-top: 30px;          /* header più su */
+--headerH: 120px;            /* altezza reale header (titolo + sottotitolo) */
+--gap-under-header: 14px;    /* spazio piccolo sotto header */
 
-  /* IMPORTANT: questa è la “riserva” reale per evitare sovrapposizioni */
- --header-reserve: clamp(135px, 18vh, 170px); /* ↑ aumentata (prima era troppo bassa) */
 
   --pad-x: 18px;
   --pad-b: 18px;
@@ -50,8 +48,9 @@
 
 @media (max-width: 520px){
   :root{
-    --header-top: 16px;
-    --header-reserve: 190px;
+    --header-top: 14px;
+    --headerH: 135px;
+     --gap-under-header: 12px;
     --pad-x: 14px;
     --pad-b: 14px;
   }
@@ -150,7 +149,8 @@ button{
   place-items: start center;
 
   padding: 0 var(--pad-x);
-  padding-top: calc(var(--header-reserve) + var(--gap-under-header));
+  padding-top: calc(var(--header-top) + var(--headerH) + var(--gap-under-header));
+
   padding-bottom: var(--pad-b);
 
   margin: 0 auto;
@@ -163,7 +163,7 @@ button{
   position: absolute;
   left: var(--pad-x);
   right: var(--pad-x);
-  top: 50px;
+  top: calc(var(--header-top) + 10px);
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(11,18,32,.18), transparent);
   opacity: .95;
@@ -171,6 +171,7 @@ button{
 }
 
 /* ---------- Card ---------- */
+
 .card{
   width: min(var(--containerW), calc(100vw - (var(--pad-x) * 2)));
   border-radius: var(--r22);
@@ -179,15 +180,14 @@ button{
   box-shadow: var(--sh1);
   padding: 18px;
   position: relative;
-  margin-top:0;
-  /* FIX: sempre dentro lo schermo */
+  margin-top: 0;
+
   max-height: calc(
     100dvh
-    - (var(--header-reserve) + var(--gap-under-header))
+    - (var(--header-top) + var(--headerH) + var(--gap-under-header))
     - var(--pad-b)
   );
 
-  /* FIX: scroll solo qui se serve */
   overflow: auto;
 }
 
