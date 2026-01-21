@@ -179,7 +179,7 @@ button{
   box-shadow: var(--sh1);
   padding: 18px;
   position: relative;
-
+  margin-top:100px;
   /* FIX: sempre dentro lo schermo */
   max-height: calc(
     100dvh
