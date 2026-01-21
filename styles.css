@@ -39,10 +39,10 @@
 
   /* layout sizing (SOLO dimensioni) */
   --header-top: 65px;
-  --gap-under-header: 22px;
+  --gap-under-header: 12px;
 
   /* IMPORTANT: questa è la “riserva” reale per evitare sovrapposizioni */
-  --header-reserve: 210px; /* ↑ aumentata (prima era troppo bassa) */
+ --header-reserve: clamp(135px, 18vh, 170px); /* ↑ aumentata (prima era troppo bassa) */
 
   --pad-x: 18px;
   --pad-b: 18px;
@@ -178,8 +178,8 @@ button{
   background: linear-gradient(180deg, rgba(255,255,255,.95), #FFFFFF);
   box-shadow: var(--sh1);
   padding: 18px;
-  position: absolute;
-  margin-top:50px;
+  position: relative;
+  margin-top:0;
   /* FIX: sempre dentro lo schermo */
   max-height: calc(
     100dvh
