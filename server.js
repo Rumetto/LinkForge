@@ -28,7 +28,7 @@ const __dirname = path.dirname(__filename);
 // Config
 // -----------------------
 const CONCURRENCY = Math.max(1, Math.min(Number(process.env.CONCURRENCY || 4), 8));
-const MIN_TEXT_CHARS = Math.max(200, Number(process.env.MIN_TEXT_CHARS || 800));
+const MIN_TEXT_CHARS = Math.max(200, Number(process.env.MIN_TEXT_CHARS || 2));
 
 const GOTO_TIMEOUT_FAST = Math.max(8000, Number(process.env.GOTO_TIMEOUT_FAST || 20000));
 const GOTO_TIMEOUT_SAFE = Math.max(12000, Number(process.env.GOTO_TIMEOUT_SAFE || 35000));
