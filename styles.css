@@ -1,9 +1,8 @@
 /* =========================================================
    LinkForge — Premium Blue Editorial UI (FULL CSS)
-   - Header fisso (desktop top: 100px)
+   - Header fisso
    - UI stabile (non balla cambiando pannelli)
    - Nessuno scroll pagina, scroll SOLO dentro la card se serve
- 
    ========================================================= */
 
 /* ---------- Tokens ---------- */
@@ -37,19 +36,37 @@
 
   /* sizing */
   --containerW: 980px;
+
+  /* layout sizing (SOLO dimensioni) */
+  --header-top: 65px;
+  --header-gap: 16px;          /* spazio tra header e card */
+  --container-pad-x: 18px;
+  --container-pad-b: 18px;
+
+  /* altezza “riservata” all’header (titolo + sottotitolo) */
+  --header-reserve: 150px;     /* desktop */
+}
+
+@media (max-width: 520px){
+  :root{
+    --header-top: 14px;
+    --header-reserve: 130px;   /* mobile più compatto */
+    --container-pad-x: 14px;
+    --container-pad-b: 14px;
+  }
 }
 
 /* ---------- Reset ---------- */
 *{ box-sizing:border-box; }
 html, body{ height:100%; }
+
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--ink);
-  position: relative;
 
-  /* no page scroll */
-  overflow: visible;
+  /* NO scroll pagina */
+  overflow: hidden;
 
   /* premium blue background (works with white card) */
   background:
@@ -59,6 +76,7 @@ body{
     linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 65%, var(--bg0) 100%);
   background-attachment: fixed;
 }
+
 ::selection{ background: rgba(18,131,255,.20); }
 
 button{
@@ -72,17 +90,17 @@ button{
   -webkit-appearance: none;
 }
 
-
 /* ---------- Header fixed ---------- */
 .header{
-  position: fixed;
+  position: fixed;            /* FIX: davvero fixed */
   left: 0;
   right: 0;
-  top: 65px;                 /* desktop requirement */
+  top: var(--header-top);
   z-index: 30;
   text-align: center;
-  pointer-events: none;   
-  position:relative;    /* doesn't block clicks below */
+
+  /* non blocca i click sotto */
+  pointer-events: none;
 }
 .header *{ pointer-events: auto; }
 
@@ -92,7 +110,6 @@ button{
   line-height: 1.04;
   letter-spacing: -0.06em;
   font-weight: 950;
-  color: var(--ink);
 
   /* subtle blue sheen (professional) */
   background: linear-gradient(180deg, #0B1220 0%, #0B2A5A 55%, #0B1220 100%);
@@ -102,6 +119,7 @@ button{
 
   text-shadow: 0 18px 50px rgba(11,18,32,.10);
 }
+
 .header h1::after{
   content:"";
   display:block;
@@ -120,33 +138,28 @@ button{
   color: rgba(82,96,117,.92);
   line-height: 1.65;
 }
+
 .titolo{ text-align:center; }
 
 /* ---------- Main container (stable layout) ---------- */
 .container{
-  position: relative;
-  
- 
   width: 100%;
- 
+  height: 100vh;                 /* FIX: tutto nella viewport */
   display: grid;
-  place-items: center;
-  /* reserve space for fixed header */
-  padding: 0 18px;
-  padding-top: 150px;         /* keeps card below header */
+  place-items: start center;      /* card sotto header */
+  padding: 0 var(--container-pad-x);
+  padding-top: calc(var(--header-reserve) + var(--header-gap));
+  padding-bottom: var(--container-pad-b);
   margin: 0 auto;
+  position: relative;
 }
 
-
-footer {
-   text-align: center;
-}
 /* top hairline */
 .container::before{
   content:"";
   position: absolute;
-  left: 18px;
-  right: 18px;
+  left: var(--container-pad-x);
+  right: var(--container-pad-x);
   top: 50px;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(11,18,32,.18), transparent);
@@ -156,21 +169,24 @@ footer {
 
 /* ---------- Card ---------- */
 .card{
-  width: min(var(--containerW), calc(100vw - 36px));
+  width: min(var(--containerW), calc(100vw - (var(--container-pad-x) * 2)));
   border-radius: var(--r22);
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255,255,255,.95), #FFFFFF);
   box-shadow: var(--sh1);
   padding: 18px;
   position: relative;
-  min-height:auto;
-  /* important: stable height, internal scroll only if needed */
-  max-height: auto;
-  overflow:visible;
-  margin-top:40px;
- 
-}
 
+  /* FIX: card sempre dentro viewport */
+  max-height: calc(
+    100vh
+    - (var(--header-reserve) + var(--header-gap))
+    - var(--container-pad-b)
+  );
+
+  /* FIX: scroll SOLO nella card se serve */
+  overflow: auto;
+}
 
 /* scrollbar (optional, nice) */
 .card::-webkit-scrollbar{ width: 10px; }
@@ -319,6 +335,7 @@ input:focus, textarea:focus, select:focus{
   box-shadow: 0 20px 46px rgba(10,58,138,.18);
   transition: transform .12s ease, filter .18s ease, box-shadow .18s ease;
 }
+
 .actions button:hover{
   transform: translateY(-1px);
   filter: brightness(1.03);
@@ -350,6 +367,7 @@ input:focus, textarea:focus, select:focus{
   padding: 12px;
   box-shadow: 0 12px 30px rgba(11,18,32,.08);
 }
+
 .statusTop{
   display:flex;
   align-items:center;
@@ -357,20 +375,24 @@ input:focus, textarea:focus, select:focus{
   gap: 12px;
   margin-bottom: 10px;
 }
+
 .msg{
   font-weight: 850;
   color: rgba(11,18,32,.86);
 }
+
 .msg:not(:empty){
   padding: 9px 11px;
   border-radius: 12px;
   border: 1px solid rgba(18,131,255,.22);
   background: rgba(18,131,255,.10);
 }
+
 .pct{
   font-weight: 950;
   color: rgba(11,18,32,.72);
 }
+
 .bar{
   height: 12px;
   border-radius: 999px;
@@ -378,6 +400,7 @@ input:focus, textarea:focus, select:focus{
   overflow:hidden;
   border: 1px solid rgba(11,18,32,.10);
 }
+
 .barFill{
   height: 100%;
   width: 0%;
@@ -388,7 +411,6 @@ input:focus, textarea:focus, select:focus{
 
 /* ---------- Depth dropdown ---------- */
 .field{ display:flex; flex-direction: column; }
-
 .depth-dd{ position: relative; }
 
 .depth-btn{
@@ -409,17 +431,20 @@ input:focus, textarea:focus, select:focus{
   box-shadow: inset 0 1px 0 rgba(11,18,32,.04);
   transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease, background .18s ease;
 }
+
 .depth-btn:hover{
   transform: translateY(-1px);
   box-shadow: var(--sh2);
   border-color: rgba(18,131,255,.45);
   background: #fff;
 }
+
 .depth-btn:focus{
   outline:none;
   border-color: rgba(18,131,255,.65);
   box-shadow: var(--ring);
 }
+
 .depth-caret{ opacity: .70; }
 
 .depth-menu{
@@ -447,6 +472,7 @@ input:focus, textarea:focus, select:focus{
   cursor:pointer;
   transition: background .14s ease, border-color .14s ease, transform .12s ease;
 }
+
 .depth-item:hover{
   background: rgba(18,131,255,.08);
   border-color: rgba(18,131,255,.18);
@@ -489,6 +515,7 @@ input:focus, textarea:focus, select:focus{
   background: rgba(255,255,255,.90);
   color: rgba(11,18,32,.82);
 }
+
 .hint-tooltip{
   display:none;
   position:absolute;
@@ -540,12 +567,21 @@ input:focus, textarea:focus, select:focus{
 }
 #downloadLink:active{ transform: translateY(0) scale(.99); }
 
+/* ---------- Footer ---------- */
+footer{
+  text-align: center;
+  margin-top: 16px;
+  padding-bottom: 14px;
+}
+
 /* =========================================================
-   Mobile optimization
+   Mobile optimization (SOLO dimensioni, non colori)
    ========================================================= */
 @media (max-width: 520px){
-  /* header closer to top on mobile */
-  .header{ top: 0px; padding: 0 14px; position:relative }
+  .header{
+    top: var(--header-top);
+    padding: 0 14px;
+  }
 
   .header h1{
     font-size: 34px;
@@ -556,36 +592,24 @@ input:focus, textarea:focus, select:focus{
     line-height: 1.55;
   }
 
- footer{
-   margin-top: 16px;
-   text-align: center;
-   padding-bottom:14px;
- }
-
-.actions {
-  justify-content: center;
-}
   .container{
-    
-    padding-bottom:20px;
-    padding-top: 120px;
-    place-items: start center; /* card starts a bit higher on short screens */
+    padding-top: calc(var(--header-reserve) + var(--header-gap));
+    padding-bottom: var(--container-pad-b);
+    place-items: start center;
   }
 
-   .card{
+  .card{
     padding: 14px;
-    max-height: calc(100vh - 150px); /* più spazio reale */
+    max-height: calc(
+      100vh
+      - (var(--header-reserve) + var(--header-gap))
+      - var(--container-pad-b)
+    );
     overflow: auto;
-   
   }
 
-  body{
-    padding-bottom:50px;
-  }
+  .modes{ gap: 8px; }
 
-  .modes{
-    gap: 8px;
-  }
   .mode{
     padding: 9px 10px;
     font-size: 14px;
@@ -600,6 +624,7 @@ input:focus, textarea:focus, select:focus{
 
   .actions{
     gap: 10px;
+    justify-content: center;
   }
 
   .actions button{
@@ -611,7 +636,7 @@ input:focus, textarea:focus, select:focus{
   #btn, #btnStop{ width: 50%; }
 }
 
-
+/* ---------- Subtitle ---------- */
 .subtitle{
   margin-top: 10px;
   text-align: center;
@@ -620,10 +645,9 @@ input:focus, textarea:focus, select:focus{
   letter-spacing: 0.2px;
   color: rgba(30, 40, 60, 0.65);
 }
-
 .subtitle b{
   font-weight: 700;
-  color: #1F2E4D; /* coerente col tuo heading */
+  color: #1F2E4D;
   background: linear-gradient(90deg, rgba(47,107,255,0.18), rgba(0,198,255,0.12));
   padding: 2px 8px;
   border-radius: 10px;
