@@ -559,112 +559,128 @@ footer{
 /* ===============================
    MOBILE FIX (no overlap, no scale)
    =============================== */
+/* ===============================
+   MOBILE FIX (NO SCROLL + AVVIA VISIBILE)
+   =============================== */
 @media (max-width: 520px){
 
-  /* lascia che la pagina “componga” correttamente gli elementi */
+  /* NO scroll pagina */
   html, body{
-    overflow: visible; /* rimane no-scroll pagina */
     height: 100%;
+    overflow: hidden !important;
   }
 
-  /* HEADER: su mobile NON deve essere fixed, sennò si sovrappone */
+  /* HEADER: nel flow (niente overlap) */
   .header{
     position: relative !important;
     top: 0 !important;
-    left: auto !important;
-    right: auto !important;
-    z-index: 1 !important;
-    padding-top: 12px;
-    margin-bottom: 10px;
-    pointer-events: auto;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 2 !important;
+    padding-top: 10px !important;
+    margin-bottom: 6px !important;
+    pointer-events: auto !important;
   }
 
   .header h1{
-    font-size: 34px !important;   /* più piccolo ma leggibile */
-    margin-bottom: 6px !important;
+    font-size: 30px !important;
+    margin: 0 0 4px 0 !important;
+  }
+  .header h1::after{
+    width: 52px !important;
+    margin: 8px auto 0 !important;
   }
 
   .subtitle{
-    font-size: 0.92rem !important;
-    margin-top: 4px !important;
-    padding: 0 10px;
+    font-size: 0.86rem !important;
+    margin-top: 2px !important;
+    padding: 0 10px !important;
+    line-height: 1.25 !important;
   }
 
-  /* CONTAINER: niente “spazio riservato” enorme, perché header ora è nel flow */
+  /* CONTAINER: compatto, senza riserve inutili */
   .container{
-    height: 100svh; /* più stabile su mobile rispetto a 100vh */
-    padding-top: 0 !important;
-    padding-left: 12px !important;
-    padding-right: 12px !important;
-    padding-bottom: 12px !important;
-    place-items: start center;
+    height: 100svh !important;
+    padding: 0 12px 10px !important;
+    place-items: start center !important;
+    overflow: visible !important;
   }
+  .container::before{ display: none !important; }
 
-  .container::before{
-    display: none; /* linea top inutile su mobile, spesso crea “stacchi” strani */
-  }
-
-  /* CARD: più stretta + niente overflow/scroll */
+  /* CARD: NO SCROLL, ma compressa per stare tutta in schermo */
   .card{
     width: calc(100vw - 24px) !important;
-    padding: 14px !important;
-    border-radius: 18px !important;
+    padding: 12px !important;
     margin-top: 6px !important;
+    border-radius: 18px !important;
 
-    /* IMPORTANT: niente scroll nella card */
-    overflow: visible !important;
+    overflow: hidden !important;   /* niente scroll interno */
+    max-height: none !important;   /* non tagliare con max-height */
 
-    /* la card resta dentro lo schermo */
-    max-height: calc(100svh - 130px) !important;
+    /* riduzione uniforme (adesso è safe) */
+    transform: scale(.88) !important;
+    transform-origin: top center !important;
   }
 
-  /* DISATTIVA COMPLETAMENTE lo scale su mobile (è quello che ti sballa tutto) */
-  .card > *{
-    transform: none !important;
+  /* riduco altezza “reale” occupata visivamente senza spingere giù */
+  .row{
+    gap: 8px !important;
+    margin-top: 10px !important;
   }
 
-  /* Pills: su mobile meglio in colonna (no schiacciamenti) */
-  .modes{
-    flex-direction: column;
-    gap: 10px;
+  label{
+    font-size: 10px !important;
+    margin-bottom: 5px !important;
   }
 
-  .mode{
-    width: 100%;
-    justify-content: flex-start;
-    padding: 12px 12px;
-    font-size: 14px;
+  .hint{
+    font-size: 10px !important;
+    margin-top: 4px !important;
   }
 
-  /* Input/textarea un filo più compatti */
+  /* Inputs più bassi */
   input, textarea, select{
-    font-size: 16px; /* evita zoom iOS */
-    padding: 12px 12px;
+    font-size: 16px !important; /* evita zoom iOS */
+    padding: 10px 11px !important;
   }
 
+  /* textarea MOLTO più bassa (così AVVIA non scende) */
   textarea{
-    min-height: 90px !important; /* ridotto per non sforare */
+    min-height: 64px !important;
   }
 
-  /* Bottoni: full width e più compatti */
-  .actions{
-    gap: 10px;
+  /* Pills: tornano in riga (salva tantissimo spazio verticale) */
+  .modes{
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
   }
-  #btn, #btnStop{
-    width: 50%;
+  .mode{
+    width: auto !important;
+    padding: 8px 10px !important;
+    font-size: 13px !important;
+  }
+
+  /* Azioni più compatte */
+  .actions{
+    margin-top: 10px !important;
+    gap: 10px !important;
   }
   .actions button{
-    padding: 12px 12px;
-    font-size: 12px;
+    padding: 11px 12px !important;
+    font-size: 12px !important;
   }
 
-  /* Status più compatto */
+  /* Status più basso */
   .status{
-    padding: 10px;
+    margin-top: 10px !important;
+    padding: 8px !important;
   }
+  .bar{ height: 9px !important; }
 
+  /* Footer: più compatto (se ancora non ci sta, puoi anche nasconderlo) */
   footer{
-    margin-top: 10px;
-    padding-bottom: 10px;
+    margin-top: 8px !important;
+    padding-bottom: 8px !important;
   }
 }
