@@ -1,13 +1,12 @@
 /* =========================================================
-   LinkForge — Premium Blue Editorial UI (CLEAN CSS)
-   - Desktop: NO scroll pagina, NO scroll card (tutto deve stare in pagina)
-   - Mobile: scroll abilitato (necessario per usare AVVIA e campi lunghi)
-   - Card e contenuto centrati (NO scale che sposta a sinistra)
+   LinkForge — Premium Blue Editorial UI (CLEAN)
+   - Desktop: header fisso, NO scroll pagina
+   - Card centrata, contenuto allineato bene (no scale)
+   - Mobile: scroll pagina per usabilità (AVVIA sempre raggiungibile)
    ========================================================= */
 
 /* ---------- Tokens ---------- */
 :root{
-  /* base */
   --bg0:#F5F8FF;
   --bg1:#EEF3FF;
   --paper:#FFFFFF;
@@ -18,12 +17,10 @@
   --line: rgba(12, 24, 48, .12);
   --line2: rgba(12, 24, 48, .16);
 
-  /* blue accents */
   --blue0:#0B2A5A;
   --blue1:#0A3A8A;
   --blue2:#1283FF;
 
-  /* radius / shadows */
   --r14: 14px;
   --r18: 18px;
   --r22: 22px;
@@ -33,41 +30,24 @@
 
   --ring: 0 0 0 4px rgba(18,131,255,.18);
 
-  /* sizing */
-  --containerW: 820px;
+  /* desktop sizing */
+  --containerW: 860px;
 
-  /* header sizing */
   --header-top: 16px;
-  --headerH: 96px;
-  --gap-under-header: 10px;
+  --header-reserve: 140px;   /* spazio “reale” per header */
+  --gap-under-header: 12px;
 
-  /* padding */
   --pad-x: 16px;
-  --pad-b: 14px;
-
-  /* compact UI desktop */
-  --card-pad: 14px;
-  --gap: 10px;
-  --mt: 12px;
-  --label: 11px;
-  --input: 14px;
-  --btn: 12px;
+  --pad-b: 16px;
 }
 
 /* ---------- Reset ---------- */
 *{ box-sizing:border-box; }
-html, body{
-  height: 100%;
-  overflow: hidden; /* desktop: niente scroll pagina */
-}
-
+html, body{ height:100%; }
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   color: var(--ink);
-
-  /* desktop: niente scroll */
-  overflow: hidden;
 
   background:
     radial-gradient(1200px 700px at 20% 10%, rgba(18,131,255,.14), transparent 60%),
@@ -90,7 +70,14 @@ button{
   -webkit-appearance: none;
 }
 
-/* ---------- Header (fixed desktop) ---------- */
+/* =========================================================
+   DESKTOP LAYOUT: no scroll pagina
+   ========================================================= */
+@media (min-width: 521px){
+  html, body{ overflow:hidden; }
+}
+
+/* ---------- Header ---------- */
 .header{
   position: fixed;
   left: 0;
@@ -98,13 +85,13 @@ button{
   top: var(--header-top);
   z-index: 30;
   text-align: center;
-  pointer-events: none;
+  pointer-events:none;
 }
-.header *{ pointer-events: auto; }
+.header *{ pointer-events:auto; }
 
 .header h1{
   margin: 0 0 6px 0;
-  font-size: clamp(26px, 3.1vw, 42px);
+  font-size: clamp(30px, 3.5vw, 50px);
   line-height: 1.04;
   letter-spacing: -0.06em;
   font-weight: 950;
@@ -120,7 +107,7 @@ button{
 .header h1::after{
   content:"";
   display:block;
-  width: 60px;
+  width: 64px;
   height: 2px;
   margin: 10px auto 0;
   border-radius: 999px;
@@ -129,9 +116,9 @@ button{
 }
 
 .subtitle{
-  margin-top: 6px;
+  margin: 8px 0 0;
   text-align: center;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 500;
   letter-spacing: 0.2px;
   color: rgba(30, 40, 60, 0.65);
@@ -140,79 +127,59 @@ button{
   font-weight: 700;
   color: #1F2E4D;
   background: linear-gradient(90deg, rgba(47,107,255,0.18), rgba(0,198,255,0.12));
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 10px;
 }
 
 /* ---------- Container ---------- */
 .container{
   width: 100%;
-  height: 100dvh;
+  min-height: 100dvh;
+
   display: grid;
   place-items: start center;
 
   padding: 0 var(--pad-x);
-  padding-top: calc(var(--header-top) + var(--headerH) + var(--gap-under-header));
+  padding-top: calc(var(--header-reserve) + var(--gap-under-header));
   padding-bottom: var(--pad-b);
 
   margin: 0 auto;
   position: relative;
 }
 
-.container::before{
-  content:"";
-  position: absolute;
-  left: var(--pad-x);
-  right: var(--pad-x);
-  top: calc(var(--header-top) + 8px);
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(11,18,32,.18), transparent);
-  opacity: .95;
-  pointer-events: none;
-}
-
-/* ---------- Card (centered) ---------- */
+/* ---------- Card ---------- */
 .card{
   width: min(var(--containerW), calc(100vw - (var(--pad-x) * 2)));
-  border-radius: var(--r18);
+  border-radius: var(--r22);
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255,255,255,.95), #FFFFFF);
   box-shadow: var(--sh1);
 
-  padding: var(--card-pad);
+  padding: 16px;
   margin-top: 0;
 
-  /* desktop: niente scroll */
-  overflow: hidden;
-
-  /* entra nel viewport */
-  max-height: calc(
-    100dvh
-    - (var(--header-top) + var(--headerH) + var(--gap-under-header))
-    - var(--pad-b)
-  );
-
-  /* centratura contenuto */
+  /* centra VISIVAMENTE il contenuto */
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
 }
 
+/* layout interno centrato (se hai wrapper dentro card) */
 .card > *{
-  width: 100%;
   max-width: 100%;
 }
 
-/* ---------- Layout blocks ---------- */
+/* ---------- Rows / grids ---------- */
 .row{
   display:grid;
-  gap: var(--gap);
-  margin-top: var(--mt);
+  gap: 12px;
+  margin-top: 14px;
 }
 
 .grid2{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--gap);
+  gap: 12px;
 }
 @media (max-width: 760px){
   .grid2{ grid-template-columns: 1fr; }
@@ -221,28 +188,27 @@ button{
 /* ---------- Labels + hints ---------- */
 label{
   font-weight: 900;
-  font-size: var(--label);
+  font-size: 12px;
   letter-spacing: .08em;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   color: rgba(11,18,32,.86);
   text-transform: uppercase;
 }
-
 .hint{
-  margin-top: 6px;
+  margin-top: 8px;
   color: rgba(82,96,117,.92);
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 /* ---------- Inputs ---------- */
 input, textarea, select{
   width:100%;
-  padding: 11px 12px;
-  font-size: var(--input);
+  padding: 12px 14px;
+  font-size: 15px;
   border-radius: var(--r14);
   border: 1px solid var(--line2);
   background: rgba(255,255,255,.98);
@@ -252,16 +218,13 @@ input, textarea, select{
   box-shadow: inset 0 1px 0 rgba(11,18,32,.04);
   transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease, background .18s ease;
 }
-
 textarea{
-  min-height: 110px;
+  min-height: 130px;
   resize: none;
 }
-
 input::placeholder, textarea::placeholder{
   color: rgba(82,96,117,.58);
 }
-
 input:focus, textarea:focus, select:focus{
   border-color: rgba(18,131,255,.55);
   box-shadow: var(--ring);
@@ -273,38 +236,35 @@ input:focus, textarea:focus, select:focus{
 .modes{
   display:flex;
   flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center; /* centra i gruppi */
+  gap: 10px;
+  justify-content: flex-start;
 }
-
 .mode{
   display:flex;
   align-items:center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 10px;
+
+  padding: 10px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: rgba(255,255,255,.70);
+
   cursor:pointer;
   user-select:none;
 
   transition: transform .12s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
   box-shadow: 0 1px 0 rgba(11,18,32,.05);
-  font-size: 13px;
 }
-
 .mode:hover{
   transform: translateY(-1px);
   border-color: rgba(18,131,255,.32);
   box-shadow: var(--sh2);
   background: rgba(255,255,255,.86);
 }
-
 .mode input{
   width:auto;
   accent-color: var(--blue2);
 }
-
 .mode:has(input:checked){
   border-color: rgba(18,131,255,.55);
   background: rgba(18,131,255,.10);
@@ -317,19 +277,19 @@ input:focus, textarea:focus, select:focus{
 /* ---------- Actions ---------- */
 .actions{
   display:flex;
-  gap: 10px;
+  gap: 12px;
   align-items:center;
-  margin-top: 12px;
+  margin-top: 14px;
 }
-
 #btn, #btnStop{ width: 50%; }
 
 .actions button{
   width:100%;
-  padding: 11px 12px;
+  padding: 13px 16px;
   border-radius: var(--r14);
   cursor:pointer;
-  font-size: var(--btn);
+
+  font-size: 13px;
   font-weight: 950;
   letter-spacing: .10em;
   text-transform: uppercase;
@@ -353,7 +313,6 @@ input:focus, textarea:focus, select:focus{
   filter: grayscale(.25);
   box-shadow: none;
 }
-
 #btnStop{
   background: rgba(255,255,255,.80);
   color: rgba(11,18,32,.92);
@@ -362,44 +321,38 @@ input:focus, textarea:focus, select:focus{
 }
 #btnStop:hover{ background: rgba(255,255,255,.95); }
 
-/* ---------- Status ---------- */
+/* ---------- Status / progress ---------- */
 .status{
-  margin-top: 12px;
+  margin-top: 14px;
   border-radius: var(--r18);
   border: 1px solid var(--line);
   background: rgba(255,255,255,.74);
-  padding: 10px;
+  padding: 12px;
   box-shadow: 0 12px 30px rgba(11,18,32,.08);
 }
-
 .statusTop{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
-
 .msg{
   font-weight: 850;
   color: rgba(11,18,32,.86);
-  font-size: 13px;
 }
 .msg:not(:empty){
-  padding: 7px 9px;
+  padding: 9px 11px;
   border-radius: 12px;
   border: 1px solid rgba(18,131,255,.22);
   background: rgba(18,131,255,.10);
 }
-
 .pct{
   font-weight: 950;
   color: rgba(11,18,32,.72);
-  font-size: 13px;
 }
-
 .bar{
-  height: 10px;
+  height: 12px;
   border-radius: 999px;
   background: rgba(11,18,32,.07);
   overflow:hidden;
@@ -413,15 +366,15 @@ input:focus, textarea:focus, select:focus{
   transition: width .18s ease;
 }
 
-/* ---------- Download link ---------- */
+/* ---------- Download button (created by JS) ---------- */
 #downloadLink{
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
   gap: 10px;
 
-  margin-top: 12px !important;
-  padding: 11px 12px !important;
+  margin-top: 14px !important;
+  padding: 12px 16px !important;
 
   border-radius: var(--r14) !important;
   text-decoration: none !important;
@@ -437,7 +390,6 @@ input:focus, textarea:focus, select:focus{
 
   cursor: pointer;
   transition: transform .12s ease, filter .18s ease, box-shadow .18s ease;
-  font-size: 12px;
 }
 #downloadLink:hover{
   transform: translateY(-1px);
@@ -449,94 +401,66 @@ input:focus, textarea:focus, select:focus{
 /* ---------- Footer ---------- */
 footer{
   text-align: center;
-  margin-top: 10px;
-  padding-bottom: 10px;
+  margin-top: 14px;
+  padding-bottom: 14px;
 }
 
 /* =========================================================
-   MOBILE (<= 520px)
-   - scroll attivo (necessario)
-   - header nel flow
-   - card centrata + full width
+   MOBILE: header nel flow + SCROLL pagina (usabile)
    ========================================================= */
 @media (max-width: 520px){
 
+  /* su mobile deve scorrere, altrimenti AVVIA sparisce */
   html, body{
-    height: auto !important;
-    overflow: auto !important;
+    height: auto;
+    overflow: auto;
   }
   body{
-    overflow-x: hidden !important;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
   }
 
+  /* header NON fixed */
   .header{
-    position: relative !important;
-    top: 0 !important;
-    padding: 12px 12px 6px !important;
-    pointer-events: auto !important;
+    position: relative;
+    top: 0;
+    padding: 14px 12px 6px;
+    pointer-events: auto;
   }
-
   .header h1{
-    font-size: 32px !important;
-    margin: 0 0 6px 0 !important;
+    font-size: 34px;
   }
-
   .subtitle{
-    font-size: 0.92rem !important;
-    line-height: 1.25 !important;
-    padding: 0 10px !important;
-    margin: 4px 0 0 !important;
+    font-size: 0.95rem;
+    padding: 0 10px;
+    line-height: 1.25;
   }
 
+  /* container senza “spazio riservato” */
   .container{
-    height: auto !important;
-    min-height: 100svh !important;
-    padding: 0 12px 16px !important;
+    min-height: 100svh;
+    padding: 0 12px 16px;
+    place-items: start center;
   }
-  .container::before{ display:none !important; }
 
   .card{
-    width: calc(100vw - 24px) !important;
-    padding: 14px !important;
-    margin-top: 10px !important;
-    border-radius: 18px !important;
-
-    max-height: none !important;
-    overflow: visible !important;
-
-    display: block; /* su mobile evita comportamenti strani */
+    width: calc(100vw - 24px);
+    padding: 14px;
   }
 
+  /* pills più comode */
   .modes{
     flex-direction: column;
     gap: 10px;
-    align-items: stretch;
   }
   .mode{
     width: 100%;
     justify-content: flex-start;
-    padding: 10px 12px;
-    font-size: 14px;
   }
 
-  input, textarea, select{
-    font-size: 16px !important;
-    padding: 12px 12px !important;
-  }
-  textarea{ min-height: 110px !important; }
+  /* evita zoom iOS */
+  input, textarea, select{ font-size: 16px; }
+  textarea{ min-height: 110px; }
 
-  .actions{
-    gap: 10px;
-    margin-top: 12px;
-  }
-  .actions button{
-    padding: 12px 12px;
-    font-size: 12px;
-  }
-
-  footer{
-    margin-top: 12px;
-    padding-bottom: 16px;
-  }
+  .actions{ gap: 10px; }
 }
