@@ -81,23 +81,6 @@ function safeFilename(s) {
     .slice(0, 90);
 }
 
-function looksLikeCloudflareChallenge(title, htmlOrText) {
-  const t = (title || "").toLowerCase();
-  const s = (htmlOrText || "").toLowerCase();
-
-  return (
-    t.includes("just a moment") ||
-    s.includes("just a moment") ||
-    s.includes("verify you are human") ||
-    s.includes("verification successful") ||
-    s.includes("waiting for") ||
-    s.includes("cdn-cgi") ||
-    s.includes("challenge-platform") ||
-    s.includes("cf-browser-verification")
-  );
-}
-
-
 function escapeHtml(str) {
   return String(str)
     .replaceAll("&", "&amp;")
@@ -485,46 +468,27 @@ async function extractSectionAuto(job, fastPage, safePage, url) {
   const fastData = await extractDomContent(fastPage);
   const fastTextLen = stripTagsToTextLen(fastData.contentHtml);
 
-  // ✅ se sembra Cloudflare, NON usare FAST
-  const fastLooksCf = looksLikeCloudflareChallenge(
-    fastData.title,
-    (fastData.contentHtml || "").slice(0, 8000)
-  );
-
-  if (!fastLooksCf && fastTextLen >= MIN_TEXT_CHARS) {
+  if (fastTextLen >= MIN_TEXT_CHARS) {
     const markdown = turndown.turndown(fastData.contentHtml || "");
     const rendered = md.render(markdown);
     return { title: fastData.title || "pagina", url, html: rendered };
   }
 
-  // SAFE (JS ON)
+  // SAFE
   await safePage.goto(url, { waitUntil: "domcontentloaded", timeout: GOTO_TIMEOUT_SAFE });
-
-  // ✅ aspetta che Cloudflare “sparisca”
   try {
-    await safePage.waitForFunction(() => {
-      const t = (document.title || "").toLowerCase();
-      const b = (document.body?.innerText || "").toLowerCase();
-      return (
-        !t.includes("just a moment") &&
-        !b.includes("verify you are human") &&
-        !b.includes("verification successful") &&
-        !b.includes("waiting for") &&
-        !b.includes("cdn-cgi") &&
-        b.trim().length > 300
-      );
-    }, { timeout: 60000 });
+    await safePage.waitForLoadState("networkidle", { timeout: 3000 });
   } catch {}
-
-  // un po’ di tempo extra per far montare SPA
-  try { await safePage.waitForTimeout(800); } catch {}
+  try {
+    await safePage.waitForTimeout(700);
+  } catch {}
 
   ensureNotCanceled(job);
 
   const safeData = await extractDomContent(safePage);
   const safeTextLen = stripTagsToTextLen(safeData.contentHtml);
 
-  const useSafe = safeTextLen > fastTextLen || fastLooksCf;
+  const useSafe = safeTextLen > fastTextLen;
   const markdown = turndown.turndown((useSafe ? safeData.contentHtml : fastData.contentHtml) || "");
   const rendered = md.render(markdown);
 
@@ -534,7 +498,6 @@ async function extractSectionAuto(job, fastPage, safePage, url) {
     html: rendered,
   };
 }
-
 
 // -----------------------
 // Images: page interactions
