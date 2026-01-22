@@ -34,8 +34,8 @@
   --containerW: 860px;
 
   --header-top: 16px;
-  --header-reserve: 70px;   /* spazio “reale” per header */
-  --gap-under-header: 4px;
+  --header-reserve: 40px;   /* spazio “reale” per header */
+  --gap-under-header: 8px;
 
   --pad-x: 16px;
   --pad-b: 16px;
