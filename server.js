@@ -36,6 +36,8 @@ const MIN_TEXT_CHARS = Math.max(0, Number(process.env.MIN_TEXT_CHARS || 200));
 
 const GOTO_TIMEOUT_FAST = Math.max(8000, Number(process.env.GOTO_TIMEOUT_FAST || 20000));
 const GOTO_TIMEOUT_SAFE = Math.max(12000, Number(process.env.GOTO_TIMEOUT_SAFE || 45000));
+const CF_WAIT_MS = Math.max(20000, Number(process.env.CF_WAIT_MS || 90000)); // aspetta fino a 90s
+
 
 const FREE_AFTER_DOWNLOAD = String(process.env.FREE_AFTER_DOWNLOAD || "1") !== "0";
 
@@ -197,6 +199,44 @@ function ensureNotCanceled(job) {
   if (job.cancelRequested) throw new Error("Job annullato dall'utente");
   if (job.status && job.status !== "running") throw new Error("Job non più in running");
 }
+
+function looksLikeCloudflare(title, textOrHtml) {
+  const t = (title || "").toLowerCase();
+  const s = (textOrHtml || "").toLowerCase();
+  return (
+    t.includes("just a moment") ||
+    s.includes("just a moment") ||
+    s.includes("verify you are human") ||
+    s.includes("verification successful") ||
+    s.includes("waiting for") ||
+    s.includes("cdn-cgi") ||
+    s.includes("challenge-platform") ||
+    s.includes("cf-browser-verification")
+  );
+}
+
+async function waitOutCloudflare(page, maxMs = CF_WAIT_MS) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const snap = await page.evaluate(() => {
+      const title = document.title || "";
+      const text = (document.body?.innerText || "").slice(0, 2500);
+      const hasCf = !!document.querySelector(
+        'form[action*="cdn-cgi"], iframe[src*="cdn-cgi"], script[src*="cdn-cgi"], div[id*="cf-"], input[name="cf-turnstile-response"]'
+      );
+      return { title, text, hasCf };
+    });
+
+    const challenge = looksLikeCloudflare(snap.title, snap.text) || snap.hasCf;
+
+    if (!challenge) return true;
+
+    // aspetta e riprova
+    await page.waitForTimeout(1500);
+  }
+  return false;
+}
+
 
 function safeZipNameFromUrl(siteUrl) {
   try {
@@ -467,28 +507,33 @@ async function extractSectionAuto(job, fastPage, safePage, url) {
 
   const fastData = await extractDomContent(fastPage);
   const fastTextLen = stripTagsToTextLen(fastData.contentHtml);
+  const fastLooksCf = looksLikeCloudflare(fastData.title, (fastData.contentHtml || "").slice(0, 8000));
 
-  if (fastTextLen >= MIN_TEXT_CHARS) {
+
+  if (!fastLooksCf && fastTextLen >= MIN_TEXT_CHARS)  {
     const markdown = turndown.turndown(fastData.contentHtml || "");
     const rendered = md.render(markdown);
     return { title: fastData.title || "pagina", url, html: rendered };
   }
 
   // SAFE
-  await safePage.goto(url, { waitUntil: "domcontentloaded", timeout: GOTO_TIMEOUT_SAFE });
-  try {
-    await safePage.waitForLoadState("networkidle", { timeout: 3000 });
-  } catch {}
-  try {
-    await safePage.waitForTimeout(700);
-  } catch {}
+ await safePage.goto(url, { waitUntil: "domcontentloaded", timeout: GOTO_TIMEOUT_SAFE });
+
+// aspetta Cloudflare (fino a CF_WAIT_MS)
+const ok = await waitOutCloudflare(safePage, CF_WAIT_MS);
+if (!ok) throw new Error("Cloudflare non superato entro il tempo massimo");
+
+// un attimo extra per SPA
+try { await safePage.waitForTimeout(800); } catch {}
+
 
   ensureNotCanceled(job);
 
   const safeData = await extractDomContent(safePage);
   const safeTextLen = stripTagsToTextLen(safeData.contentHtml);
 
-  const useSafe = safeTextLen > fastTextLen;
+  const useSafe = fastLooksCf || safeTextLen > fastTextLen;
+
   const markdown = turndown.turndown((useSafe ? safeData.contentHtml : fastData.contentHtml) || "");
   const rendered = md.render(markdown);
 
@@ -882,6 +927,7 @@ setInterval(() => {
 // -----------------------
 async function runPdfJob(job, body) {
   let browser;
+  let context;
 
   try {
     const mode = body.mode || (body.url ? "single" : null);
@@ -889,8 +935,34 @@ async function runPdfJob(job, body) {
 
     updateJob(job, { message: "Avvio browser...", percent: 2 });
 
-    browser = await chromium.launch({ headless: true, args: launchArgsForOs() });
+   browser = await chromium.launch({
+  headless: true,
+  args: [
+    ...launchArgsForOs(),
+    "--disable-blink-features=AutomationControlled",
+    "--no-first-run",
+    "--no-default-browser-check",
+  ],
+});
+
     job.browserRef = browser;
+    context = await browser.newContext({
+  locale: "it-IT",
+  timezoneId: "Europe/Rome",
+  viewport: { width: 1365, height: 900 },
+  userAgent:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  extraHTTPHeaders: {
+    "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
+  },
+});
+
+await context.addInitScript(() => {
+  Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+  Object.defineProperty(navigator, "languages", { get: () => ["it-IT", "it", "en-US", "en"] });
+  Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+});
+
 
     // 1) URLs
     let urls = [];
@@ -951,8 +1023,17 @@ async function runPdfJob(job, body) {
     // 2) Worker pages: una coppia per worker
     const workerCount = Math.min(CONCURRENCY, urls.length);
 
-    const fastPages = await Promise.all(Array.from({ length: workerCount }, () => browser.newPage({ javaScriptEnabled: false })));
-    const safePages = await Promise.all(Array.from({ length: workerCount }, () => browser.newPage({ javaScriptEnabled: true })));
+    const fastPages = await Promise.all(
+  Array.from({ length: workerCount }, () => context.newPage())
+);
+const safePages = await Promise.all(
+  Array.from({ length: workerCount }, () => context.newPage())
+);
+
+// disabilita JS solo sulle fast
+await Promise.all(fastPages.map((p) => p.setJavaScriptEnabled(false)));
+await Promise.all(safePages.map((p) => p.setJavaScriptEnabled(true)));
+
 
     await Promise.all(fastPages.map((p) => configureBlocking(p, "fast")));
     await Promise.all(safePages.map((p) => configureBlocking(p, "safe")));
@@ -995,7 +1076,9 @@ async function runPdfJob(job, body) {
 
     // 3) PDF
     const combinedHtml = buildCombinedHtml(sections);
-    const pdfPage = await browser.newPage({ javaScriptEnabled: false });
+    const pdfPage = await context.newPage();
+await pdfPage.setJavaScriptEnabled(false);
+
     await pdfPage.emulateMedia({ media: "screen" });
     await pdfPage.setContent(combinedHtml, { waitUntil: "domcontentloaded", timeout: 25000 });
 
@@ -1015,14 +1098,14 @@ async function runPdfJob(job, body) {
   } catch (e) {
     job.error = String(e?.message || e);
     updateJob(job, { status: "error", message: job.error, percent: 100 });
-  } finally {
-    job.browserRef = null;
-    if (browser) {
-      try {
-        await browser.close();
-      } catch {}
-    }
+ } finally {
+  job.browserRef = null;
+  try { await context?.close(); } catch {}
+  if (browser) {
+    try { await browser.close(); } catch {}
   }
+}
+
 }
 
 // -----------------------
