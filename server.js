@@ -1,11 +1,17 @@
-// server.js — Site2PDF + Site2Images (ZIP) + STOP (FIXED)
-// - PDF solo testo (single/list/site) con AUTO fast->safe
-// - Immagini (single/list/site) -> scarica ZIP (una "cartella") con nome sito
-// - Filtro min KB
-// - “Qualità massima”: prende il candidato migliore da srcset/picture/lazy
-// - Supporta tutti i formati image/* (estensione da URL o Content-Type)
-// - SSE progress (counter coerenti: found / processed / downloaded)
-// - STOP reale: POST /api/stop/:jobId
+// server.js — Site2PDF + Site2Images (ZIP) + STOP (MAX-REALISTIC)
+// Obiettivo immagini: più vicino possibile al 100% realistico (HTML + CSS + JS + caroselli + lazy)
+// - Cattura immagini da:
+//   1) response del browser (tutto ciò che la pagina scarica davvero, incl. CSS background, fetch, xhr)
+//   2) DOM (img/srcset/picture/lazy/meta/icon/style inline)
+//   3) CSS (scarica i fogli CSS, parse url(...), inclusi CDN)
+//   4) JS (scarica script, parse url immagini "hard-coded", inclusi CDN)
+//   5) data:image base64 (inline) dal DOM (non passano da network)
+// - Dedupe "best quality": per ogni chiave canonica (stessa immagine con varianti) tiene SOLO la migliore
+//   sostituendo su disco (non appendiamo due volte nello zip).
+// - STOP reale: POST /api/stop/:jobId interrompe fetch, chiude browser, finalizza error.
+// NOTE REALTÀ: non esiste il 100% assoluto.
+// - Se un sito NON richiede mai un’immagine (es. slide mai aperta, asset generato server-side solo su click), non puoi prenderla.
+// - Canvas/WebGL non sono "file immagini" scaricabili se non esportati dal sito.
 
 import express from "express";
 import { chromium } from "playwright";
@@ -17,42 +23,45 @@ import archiver from "archiver";
 import fs from "fs";
 import os from "os";
 import path from "path";
-
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-
 // -----------------------
 // Config
 // -----------------------
-const CONCURRENCY = Math.max(1, Math.min(Number(process.env.CONCURRENCY || 4), 8));
-const MIN_TEXT_CHARS = Math.max(200, Number(process.env.MIN_TEXT_CHARS || 2));
+const CONCURRENCY = Math.max(1, Math.min(Number(process.env.CONCURRENCY || 4), 10));
+const MIN_TEXT_CHARS = Math.max(0, Number(process.env.MIN_TEXT_CHARS || 200));
 
 const GOTO_TIMEOUT_FAST = Math.max(8000, Number(process.env.GOTO_TIMEOUT_FAST || 20000));
-const GOTO_TIMEOUT_SAFE = Math.max(12000, Number(process.env.GOTO_TIMEOUT_SAFE || 35000));
+const GOTO_TIMEOUT_SAFE = Math.max(12000, Number(process.env.GOTO_TIMEOUT_SAFE || 45000));
 
 const FREE_AFTER_DOWNLOAD = String(process.env.FREE_AFTER_DOWNLOAD || "1") !== "0";
 
+// Download tuning
+const IMG_DL_CONCURRENCY = Math.max(1, Math.min(Number(process.env.IMG_DL_CONCURRENCY || 8), 16));
+const MAX_TEXT_ASSET_BYTES = Math.max(200_000, Math.min(Number(process.env.MAX_TEXT_ASSET_BYTES || 2_000_000), 10_000_000)); // CSS/JS max bytes to parse
+const MAX_URL_CANDIDATES = Math.max(2_000, Math.min(Number(process.env.MAX_URL_CANDIDATES || 30_000), 200_000)); // safety
+
 const app = express();
 app.use(express.json({ limit: "2mb" }));
-app.use(express.static(__dirname, {
-  setHeaders(res, filePath) {
-    if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css; charset=utf-8");
-  },
-}));
+app.use(
+  express.static(__dirname, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css; charset=utf-8");
+    },
+  })
+);
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(process.cwd(), "index.html"));
 });
 
-
 // -----------------------
 // Markdown pipeline
 // -----------------------
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
-
 const turndown = new TurndownService({
   headingStyle: "atx",
   codeBlockStyle: "fenced",
@@ -97,32 +106,41 @@ function isPrivateIpV4(ip) {
   if (a === 0) return true;
   if (a === 192 && b === 168) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 169 && b === 254) return true; // link-local
+  if (a === 169 && b === 254) return true;
   return false;
 }
 
 function isPrivateIpV6(ip) {
   const v = ip.toLowerCase();
   if (v === "::" || v === "::1") return true;
-  if (v.startsWith("fe8") || v.startsWith("fe9") || v.startsWith("fea") || v.startsWith("feb")) return true; // fe80::/10 approx
-  if (v.startsWith("fc") || v.startsWith("fd")) return true; // fc00::/7
+  if (v.startsWith("fe8") || v.startsWith("fe9") || v.startsWith("fea") || v.startsWith("feb")) return true;
+  if (v.startsWith("fc") || v.startsWith("fd")) return true;
   return false;
 }
 
+const dnsCache = new Map(); // hostname -> boolean (isPrivate)
 async function resolvesToPrivateIp(hostname) {
-  if (isIpV4(hostname)) return isPrivateIpV4(hostname);
-  if (isIpV6(hostname)) return true; // prudente: blocca literal IPv6
+  if (dnsCache.has(hostname)) return dnsCache.get(hostname);
 
+  let isPriv = true;
   try {
-    const addrs = await dns.lookup(hostname, { all: true, verbatim: true });
-    for (const a of addrs) {
-      if (a.family === 4 && isPrivateIpV4(a.address)) return true;
-      if (a.family === 6 && isPrivateIpV6(a.address)) return true;
+    if (isIpV4(hostname)) isPriv = isPrivateIpV4(hostname);
+    else if (isIpV6(hostname)) isPriv = true;
+    else {
+      const addrs = await dns.lookup(hostname, { all: true, verbatim: true });
+      isPriv = false;
+      for (const a of addrs) {
+        if (a.family === 4 && isPrivateIpV4(a.address)) isPriv = true;
+        if (a.family === 6 && isPrivateIpV6(a.address)) isPriv = true;
+        if (isPriv) break;
+      }
     }
   } catch {
-    return true;
+    isPriv = true;
   }
-  return false;
+
+  dnsCache.set(hostname, isPriv);
+  return isPriv;
 }
 
 function normalizeUrl(u) {
@@ -167,7 +185,7 @@ function matchesAny(str, patterns = []) {
 }
 
 function isProbablyFileUrl(u) {
-  return /\.(pdf|zip|rar|7z|mp4|mp3|css|js)(\?|#|$)/i.test(u);
+  return /\.(pdf|zip|rar|7z|mp4|mp3)(\?|#|$)/i.test(u);
 }
 
 function launchArgsForOs() {
@@ -177,6 +195,7 @@ function launchArgsForOs() {
 
 function ensureNotCanceled(job) {
   if (job.cancelRequested) throw new Error("Job annullato dall'utente");
+  if (job.status && job.status !== "running") throw new Error("Job non più in running");
 }
 
 function safeZipNameFromUrl(siteUrl) {
@@ -233,9 +252,8 @@ function extFromUrl(u) {
   }
 }
 
-
 // -----------------------
-// Dedupe "universale": stessa immagine con URL diversi -> tieni solo la migliore
+// Dedupe "best quality" per immagine
 // -----------------------
 function canonicalImageKey(rawUrl) {
   try {
@@ -251,10 +269,9 @@ function canonicalImageKey(rawUrl) {
     p = p.replace(/-\d{2,5}x\d{2,5}(?=\.[a-z0-9]{2,5}$)/i, "");
     p = p.replace(/_\d{2,5}x\d{2,5}(?=\.[a-z0-9]{2,5}$)/i, "");
 
-    // Per CDN “trasformativi” alcuni path cambiano:
-    // creiamo una key che ignora token/expire/signature ma considera dimensioni
+    // Ignora token comuni, ma conserva parametri "qualità/dimensioni"
     const keep = [];
-    const keysToKeep = ["w","width","h","height","q","quality","dpr","fm","format"];
+    const keysToKeep = ["w", "width", "h", "height", "q", "quality", "dpr", "fm", "format"];
     for (const k of keysToKeep) {
       const v = u.searchParams.get(k);
       if (v) keep.push(`${k}=${v}`);
@@ -263,7 +280,7 @@ function canonicalImageKey(rawUrl) {
 
     return `${u.origin}${p}?${keep.join("&")}`.toLowerCase();
   } catch {
-    return rawUrl;
+    return String(rawUrl || "");
   }
 }
 
@@ -278,6 +295,7 @@ function getNumericParam(urlObj, names) {
 }
 
 function scoreImageUrl(rawUrl) {
+  // Score da URL (dimensioni/qualità/formato) + (poi aggiungiamo buf.length)
   try {
     const u = new URL(rawUrl);
 
@@ -286,23 +304,22 @@ function scoreImageUrl(rawUrl) {
     const q = getNumericParam(u, ["q", "quality", "qlt"]);
     const dpr = getNumericParam(u, ["dpr", "devicePixelRatio", "dpi"]);
 
-    const area = (w && h) ? (w * h) : (w ? w * 1000 : 0);
+    const area = w && h ? w * h : w ? w * 1000 : 0;
 
     const fmt = (u.searchParams.get("fm") || u.searchParams.get("format") || "").toLowerCase();
     const pathExt = (u.pathname.split(".").pop() || "").toLowerCase();
     const format = fmt || pathExt;
 
     let formatBonus = 0;
-    if (format.includes("avif")) formatBonus = 50000;
-    else if (format.includes("webp")) formatBonus = 30000;
-    else if (format.includes("png")) formatBonus = 10000;
+    if (format.includes("avif")) formatBonus = 60_000;
+    else if (format.includes("webp")) formatBonus = 40_000;
+    else if (format.includes("png")) formatBonus = 12_000;
 
-    const qBonus = q ? Math.min(100, q) * 200 : 0;
-    const dprBonus = dpr ? Math.min(5, dpr) * 5000 : 0;
+    const qBonus = q ? Math.min(100, q) * 250 : 0;
+    const dprBonus = dpr ? Math.min(6, dpr) * 6000 : 0;
 
     const path = u.pathname.toLowerCase();
-    const thumbPenalty =
-      /(thumb|thumbnail|small|_sm|_xs|\/sm\/|\/thumbs\/)/i.test(path) ? -15000 : 0;
+    const thumbPenalty = /(thumb|thumbnail|small|_sm|_xs|\/sm\/|\/thumbs\/)/i.test(path) ? -20_000 : 0;
 
     return area + formatBonus + qBonus + dprBonus + thumbPenalty;
   } catch {
@@ -310,22 +327,12 @@ function scoreImageUrl(rawUrl) {
   }
 }
 
-function dedupeBestImages(urls) {
-  const bestByKey = new Map();
+function sha1(buf) {
+  return crypto.createHash("sha1").update(buf).digest("hex");
+}
 
-  for (const raw of urls) {
-    const key = canonicalImageKey(raw);
-    const s = scoreImageUrl(raw);
-
-    const prev = bestByKey.get(key);
-    if (!prev || s > prev.score) {
-      bestByKey.set(key, { url: raw, score: s });
-    }
-  }
-
-  return Array.from(bestByKey.values())
-    .sort((a, b) => b.score - a.score)
-    .map((x) => x.url);
+function stableKeyHash(key) {
+  return crypto.createHash("sha1").update(String(key)).digest("hex").slice(0, 18);
 }
 
 // -----------------------
@@ -470,10 +477,10 @@ async function extractSectionAuto(job, fastPage, safePage, url) {
   // SAFE
   await safePage.goto(url, { waitUntil: "domcontentloaded", timeout: GOTO_TIMEOUT_SAFE });
   try {
-    await safePage.waitForLoadState("networkidle", { timeout: 2500 });
+    await safePage.waitForLoadState("networkidle", { timeout: 3000 });
   } catch {}
   try {
-    await safePage.waitForTimeout(600);
+    await safePage.waitForTimeout(700);
   } catch {}
 
   ensureNotCanceled(job);
@@ -493,143 +500,139 @@ async function extractSectionAuto(job, fastPage, safePage, url) {
 }
 
 // -----------------------
-// Images: extract max quality URLs
+// Images: page interactions
 // -----------------------
-async function extractImageUrls(page, pageUrl) {
-  const base = new URL(pageUrl);
-
-  const urls = await page.evaluate(() => {
-    const out = [];
-
-    const pickBestFromSrcset = (srcset) => {
-      if (!srcset || typeof srcset !== "string") return null;
-
-      const items = srcset
-        .split(",")
-        .map((x) => x.trim())
-        .map((x) => {
-          const [u, d] = x.split(/\s+/);
-          if (!u) return null;
-
-          let score = 0;
-
-          // descriptor: "800w" or "2x"
-          if (d) {
-            if (d.endsWith("w")) score = parseInt(d, 10) || 0;
-            else if (d.endsWith("x")) score = Math.round((parseFloat(d) || 0) * 100000);
-          } else {
-            // no descriptor -> small score
-            score = 1;
+async function autoScroll(page) {
+  try {
+    await page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let total = 0;
+        const step = 900;
+        const timer = setInterval(() => {
+          window.scrollBy(0, step);
+          total += step;
+          if (total > document.body.scrollHeight + 2500) {
+            clearInterval(timer);
+            window.scrollTo(0, 0);
+            resolve();
           }
-
-          return { u, score };
-        })
-        .filter(Boolean);
-
-      if (!items.length) return null;
-      items.sort((a, b) => b.score - a.score);
-      return items[0].u;
-    };
-
-    const firstNonEmpty = (...vals) => {
-      for (const v of vals) {
-        if (typeof v === "string" && v.trim()) return v.trim();
-      }
-      return null;
-    };
-
-    const pickBestImgUrl = (img) => {
-      // srcset priority (also lazy variants)
-      const ss =
-        img.getAttribute("data-srcset") ||
-        img.getAttribute("data-lazy-srcset") ||
-        img.getAttribute("data-srcset2") ||
-        img.getAttribute("srcset");
-
-      const bestFromSs = pickBestFromSrcset(ss);
-
-      // common lazy attributes
-      const dataOriginal = img.getAttribute("data-original");
-      const dataSrc = img.getAttribute("data-src");
-      const dataLazy = img.getAttribute("data-lazy-src");
-      const dataUrl = img.getAttribute("data-url");
-      const src = img.getAttribute("src");
-
-      // choose ONE best
-      return firstNonEmpty(
-        bestFromSs,
-        dataOriginal,
-        dataSrc,
-        dataLazy,
-        dataUrl,
-        src
-      );
-    };
-
-    const pickBestPictureUrl = (picture) => {
-      // best among all <source srcset>, fallback to <img>
-      const candidates = [];
-
-      picture.querySelectorAll("source").forEach((s) => {
-        const ss = s.getAttribute("srcset");
-        const best = pickBestFromSrcset(ss);
-        if (best) candidates.push(best);
+        }, 220);
       });
-
-      const img = picture.querySelector("img");
-      if (img) {
-        const bestImg = pickBestImgUrl(img);
-        if (bestImg) candidates.push(bestImg);
-      }
-
-      // If we collected multiple, pick "best" by reusing srcset scoring when possible:
-      // Here we just prefer longer (often full URL) is not reliable; better pick first source-best if exists.
-      // We'll prefer the first candidate from sources (they come first), otherwise img.
-      return candidates[0] || null;
-    };
-
-    // 1) <picture> first (avoid double counting the inner <img>)
-    document.querySelectorAll("picture").forEach((pic) => {
-      const best = pickBestPictureUrl(pic);
-      if (best) out.push(best);
     });
-
-    // 2) <img> that are NOT inside picture
-    document.querySelectorAll("img").forEach((img) => {
-      if (img.closest("picture")) return;
-      const best = pickBestImgUrl(img);
-      if (best) out.push(best);
-    });
-
-    // 3) Social meta (usually already best)
-    document.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]').forEach((m) => {
-      const c = m.getAttribute("content");
-      if (c && c.trim()) out.push(c.trim());
-    });
-
-    // 4) Inline background-image (one per element)
-    document.querySelectorAll("[style]").forEach((el) => {
-      const st = el.getAttribute("style") || "";
-      const m = st.match(/background-image\s*:\s*url\(["']?([^"')]+)["']?\)/i);
-      if (m && m[1]) out.push(m[1].trim());
-    });
-
-    return out.filter(Boolean);
-  });
-
-  // resolve + dedupe absolute
-  const out = new Set();
-  for (const u of urls) {
-    try {
-      const abs = new URL(u, base);
-      abs.hash = "";
-      if (!["http:", "https:"].includes(abs.protocol)) continue;
-      out.add(abs.toString());
-    } catch {}
-  }
-  return Array.from(out);
+  } catch {}
 }
 
+async function primeLazy(page) {
+  // Prova a forzare lazy/caroselli
+  try {
+    await page.evaluate(() => {
+      // forza eager su immagini
+      document.querySelectorAll("img[loading='lazy']").forEach((img) => img.setAttribute("loading", "eager"));
+      // tenta di "svelare" lazy libs classiche
+      document.querySelectorAll("img[data-src], img[data-lazy-src], img[data-original]").forEach((img) => {
+        const ds = img.getAttribute("data-src") || img.getAttribute("data-lazy-src") || img.getAttribute("data-original");
+        if (ds && !img.getAttribute("src")) img.setAttribute("src", ds);
+      });
+    });
+  } catch {}
+}
+
+async function clickCarouselLike(page) {
+  // vari tentativi (swiper/slick/next/arrow)
+  try {
+    for (let i = 0; i < 10; i++) {
+      await page.evaluate(() => {
+        const candidates = [
+          ".swiper-button-next",
+          ".slick-next",
+          "[data-testid*='next' i]",
+          "button[aria-label*='next' i]",
+          "button[title*='next' i]",
+          "button[class*='next' i]",
+          "a[aria-label*='next' i]",
+          "a[title*='next' i]",
+        ];
+        for (const sel of candidates) {
+          const el = document.querySelector(sel);
+          if (el) {
+            el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            return;
+          }
+        }
+
+        // fallback: cerca bottoni con ">" o "→"
+        const btns = Array.from(document.querySelectorAll("button,a,div")).slice(0, 400);
+        const hit = btns.find((x) => {
+          const t = (x.textContent || "").trim();
+          return t === ">" || t === "→" || t.toLowerCase() === "next";
+        });
+        if (hit) hit.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+
+      await page.waitForTimeout(420);
+
+      // anche frecce tastiera
+      try {
+        await page.keyboard.press("ArrowRight");
+        await page.waitForTimeout(220);
+      } catch {}
+    }
+  } catch {}
+}
+
+// -----------------------
+// URL extraction helpers (DOM/CSS/JS/data:)
+// -----------------------
+function looksLikeImageUrl(u) {
+  return /\.(png|jpe?g|webp|gif|svg|avif|bmp|tiff?|ico|heic|heif|apng)(\?|#|$)/i.test(u);
+}
+
+function extractUrlsFromText(text) {
+  const out = new Set();
+  if (!text) return out;
+
+  // url(...) in CSS
+  const urlRe = /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi;
+  for (let m; (m = urlRe.exec(text)); ) {
+    const u = m[1];
+    if (!u) continue;
+    out.add(u);
+  }
+
+  // raw absolute/relative that look like images
+  const rawRe = /((https?:\/\/|\/)[^\s"'()<>]+?\.(?:png|jpe?g|webp|gif|svg|avif|bmp|tiff?|ico|heic|heif|apng)(?:\?[^\s"'<>)]*)?)/gi;
+  for (let m; (m = rawRe.exec(text)); ) {
+    const u = m[1];
+    if (!u) continue;
+    out.add(u);
+  }
+
+  return out;
+}
+
+function resolveToAbs(baseUrl, maybeUrl) {
+  try {
+    const abs = new URL(maybeUrl, baseUrl);
+    abs.hash = "";
+    if (!["http:", "https:"].includes(abs.protocol)) return null;
+    return abs.toString();
+  } catch {
+    return null;
+  }
+}
+
+function dataUrlToBuffer(dataUrl) {
+  try {
+    const m = String(dataUrl).match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+    if (!m) return null;
+    const contentType = m[1].toLowerCase();
+    const b64 = m[2];
+    const buf = Buffer.from(b64, "base64");
+    return { buf, contentType };
+  } catch {
+    return null;
+  }
+}
 
 // -----------------------
 // Fetch helpers (Node 18+)
@@ -646,33 +649,34 @@ async function fetchWithTimeout(url, ms, signal, method = "GET") {
       : controller.signal;
 
   try {
-    return await fetch(url, { method, signal: sig, redirect: "follow" });
+    return await fetch(url, {
+      method,
+      signal: sig,
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
+        Accept: "*/*",
+      },
+    });
   } finally {
     clearTimeout(t);
   }
 }
 
-
-async function downloadImageIfBigEnough(url, minBytes, signal) {
-  // HEAD best-effort
-  try {
-    const head = await fetchWithTimeout(url, 12000, signal, "HEAD");
-    const ct = head.headers.get("content-type") || "";
-    const cl = Number(head.headers.get("content-length") || 0);
-    if (ct && !ct.toLowerCase().includes("image/")) return null;
-    if (cl && cl < minBytes) return null;
-  } catch {
-    // ignore
-  }
-
-  const res = await fetchWithTimeout(url, 25000, signal);
+async function downloadBinary(url, signal, maxBytes = 0) {
+  // maxBytes=0 -> no cap (ma non consigliato per roba non immagine)
+  const res = await fetchWithTimeout(url, 30000, signal, "GET");
   if (!res.ok) return null;
 
-  const ct = res.headers.get("content-type") || "";
-  if (!ct.toLowerCase().includes("image/")) return null;
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  const cl = Number(res.headers.get("content-length") || 0);
 
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < minBytes) return null;
+  if (maxBytes && cl && cl > maxBytes) return null;
+
+  const ab = await res.arrayBuffer();
+  const buf = Buffer.from(ab);
+  if (maxBytes && buf.length > maxBytes) return null;
 
   return { buf, contentType: ct };
 }
@@ -705,9 +709,9 @@ async function extractInternalLinks(page, baseUrl) {
 }
 
 async function crawlSite(browser, startUrl, { maxPages, maxDepth, includePatterns, excludePatterns }, onProgress) {
-  const HARD_MAX_PAGES = 60;
+  const HARD_MAX_PAGES = 80;
   maxPages = Math.max(1, Math.min(Number(maxPages) || 25, HARD_MAX_PAGES));
-  maxDepth = Math.max(0, Math.min(Number(maxDepth) || 2, 5));
+  maxDepth = Math.max(0, Math.min(Number(maxDepth) || 2, 6));
 
   const visited = new Set();
   const queue = [{ url: normalizeUrl(startUrl), depth: 0 }].filter(Boolean);
@@ -741,17 +745,15 @@ async function crawlSite(browser, startUrl, { maxPages, maxDepth, includePattern
     if (depth >= maxDepth) continue;
 
     try {
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
+      try {
+        await page.waitForLoadState("networkidle", { timeout: 3000 });
+      } catch {}
+      try {
+        await page.waitForTimeout(700);
+      } catch {}
 
-// dai tempo alle SPA (React) di montare e creare i link
-try {
-  await page.waitForLoadState("networkidle", { timeout: 2500 });
-} catch {}
-try {
-  await page.waitForTimeout(700);
-} catch {}
-
-const links = await extractInternalLinks(page, startUrl);
+      const links = await extractInternalLinks(page, startUrl);
 
       for (const link of links) {
         if (results.length + queue.length >= maxPages * 3) break;
@@ -816,9 +818,9 @@ function createJob() {
     error: null,
     abortController: null,
     zipPath: null,
-zipArchive: null,
-zipOutput: null,
 
+    // images temp
+    tmpDir: null,
 
     // STOP support
     cancelRequested: false,
@@ -858,6 +860,18 @@ setInterval(() => {
           res.end();
         } catch {}
       }
+      // cleanup tmp
+      if (job.tmpDir) {
+        try {
+          fs.rmSync(job.tmpDir, { recursive: true, force: true });
+        } catch {}
+      }
+      // cleanup zip
+      if (job.zipPath) {
+        try {
+          fs.unlinkSync(job.zipPath);
+        } catch {}
+      }
       jobs.delete(id);
     }
   }
@@ -890,7 +904,7 @@ async function runPdfJob(job, body) {
       updateJob(job, { message: "1 pagina in coda", percent: 8, total: 1, current: 0 });
     } else if (mode === "list") {
       if (!Array.isArray(body.urls)) throw new Error("Manca urls (array)");
-      urls = body.urls.map((u) => normalizeUrl(String(u).trim())).filter(Boolean).slice(0, 30);
+      urls = body.urls.map((u) => normalizeUrl(String(u).trim())).filter(Boolean).slice(0, 40);
       if (!urls.length) throw new Error("Lista vuota");
       for (const u of urls) await assertUrlAllowed(u);
       titleForFile = "lista-pagine";
@@ -910,12 +924,12 @@ async function runPdfJob(job, body) {
         startUrl,
         { maxPages: body.maxPages ?? 25, maxDepth: body.maxDepth ?? 2, includePatterns, excludePatterns },
         (p) => {
-          const crawlPct = 6 + Math.min(16, Math.round((p.current / p.total) * 16));
+          const crawlPct = 6 + Math.min(18, Math.round((p.current / p.total) * 18));
           updateJob(job, {
             message: p.message,
             percent: crawlPct,
             current: p.current,
-            total: Math.min(Number(body.maxPages) || 25, 60),
+            total: Math.min(Number(body.maxPages) || 25, 80),
           });
         }
       );
@@ -924,7 +938,7 @@ async function runPdfJob(job, body) {
       titleForFile = "sito";
       updateJob(job, {
         message: `Trovate ${urls.length} pagine. Estraggo testo (AUTO) ${CONCURRENCY}x...`,
-        percent: 22,
+        percent: 24,
         total: urls.length,
         current: 0,
       });
@@ -937,12 +951,8 @@ async function runPdfJob(job, body) {
     // 2) Worker pages: una coppia per worker
     const workerCount = Math.min(CONCURRENCY, urls.length);
 
-    const fastPages = await Promise.all(
-      Array.from({ length: workerCount }, () => browser.newPage({ javaScriptEnabled: false }))
-    );
-    const safePages = await Promise.all(
-      Array.from({ length: workerCount }, () => browser.newPage({ javaScriptEnabled: true }))
-    );
+    const fastPages = await Promise.all(Array.from({ length: workerCount }, () => browser.newPage({ javaScriptEnabled: false })));
+    const safePages = await Promise.all(Array.from({ length: workerCount }, () => browser.newPage({ javaScriptEnabled: true })));
 
     await Promise.all(fastPages.map((p) => configureBlocking(p, "fast")));
     await Promise.all(safePages.map((p) => configureBlocking(p, "safe")));
@@ -955,7 +965,7 @@ async function runPdfJob(job, body) {
 
       updateJob(job, {
         message: `Leggo pagina ${completed + 1}/${total}...`,
-        percent: 22 + Math.round((completed / Math.max(1, total)) * 60),
+        percent: 24 + Math.round((completed / Math.max(1, total)) * 56),
         current: completed,
         total,
       });
@@ -981,13 +991,13 @@ async function runPdfJob(job, body) {
     if (mode === "single" && sections[0]?.title) titleForFile = sections[0].title;
 
     ensureNotCanceled(job);
-    updateJob(job, { message: "Creo PDF...", percent: 85, current: sections.length, total });
+    updateJob(job, { message: "Creo PDF...", percent: 86, current: sections.length, total });
 
     // 3) PDF
     const combinedHtml = buildCombinedHtml(sections);
     const pdfPage = await browser.newPage({ javaScriptEnabled: false });
     await pdfPage.emulateMedia({ media: "screen" });
-    await pdfPage.setContent(combinedHtml, { waitUntil: "domcontentloaded", timeout: 20000 });
+    await pdfPage.setContent(combinedHtml, { waitUntil: "domcontentloaded", timeout: 25000 });
 
     const pdfBuffer = await pdfPage.pdf({
       format: "A4",
@@ -1016,10 +1026,134 @@ async function runPdfJob(job, body) {
 }
 
 // -----------------------
-// Job: Images -> ZIP (counter FIXED)
+// Job: Images -> ZIP (MAX-REALISTIC)
 // -----------------------
 async function runImagesJob(job, body) {
   let browser;
+
+  // temp registry: canonicalKey -> best { score, filePath, ext, url, bytes }
+  const bestByKey = new Map();
+
+  // URL candidates
+  const urlCandidates = new Map(); // canonicalKey -> { url, scoreUrlOnly }
+
+  function considerUrlCandidate(rawUrl) {
+    if (!rawUrl) return;
+    if (job.cancelRequested) return;
+
+    // ignore data: here, handled elsewhere
+    if (/^data:image\//i.test(rawUrl)) return;
+
+    const key = canonicalImageKey(rawUrl);
+    const s = scoreImageUrl(rawUrl);
+
+    const prev = urlCandidates.get(key);
+    if (!prev || s > prev.scoreUrlOnly) urlCandidates.set(key, { url: rawUrl, scoreUrlOnly: s });
+  }
+
+  function considerBufferCandidate({ url, buf, contentType }) {
+    if (!buf || !buf.length) return;
+    if (job.cancelRequested) return;
+
+    const ext = extFromUrl(url) || extFromContentType(contentType) || "img";
+    const key = url ? canonicalImageKey(url) : sha1(buf);
+    const urlScore = url ? scoreImageUrl(url) : 0;
+
+    // score finale: urlScore + dimensione (molto importante per qualità reale)
+    const finalScore = urlScore + buf.length;
+
+    const prev = bestByKey.get(key);
+    if (prev && prev.score >= finalScore) return;
+
+    // write/overwrite on disk
+    const keyHash = stableKeyHash(key);
+    const filePath = path.join(job.tmpDir, `${keyHash}.${ext}`);
+
+    try {
+      fs.writeFileSync(filePath, buf);
+      bestByKey.set(key, { score: finalScore, filePath, ext, url: url || "", bytes: buf.length });
+    } catch {
+      // ignore
+    }
+  }
+
+  function considerDataImage(dataUrl) {
+    const parsed = dataUrlToBuffer(dataUrl);
+    if (!parsed) return;
+    const ext = extFromContentType(parsed.contentType) || "img";
+    const fakeUrl = `data.${ext}`;
+    considerBufferCandidate({ url: fakeUrl, buf: parsed.buf, contentType: parsed.contentType });
+  }
+
+  // parse CSS/JS to find image URLs
+  async function collectFromCssText(cssText, baseUrl) {
+    const found = extractUrlsFromText(cssText);
+    for (const u of found) {
+      if (urlCandidates.size > MAX_URL_CANDIDATES) break;
+      const abs = resolveToAbs(baseUrl, u);
+      if (!abs) continue;
+      if (looksLikeImageUrl(abs) || /\/image\/|\/images\//i.test(abs) || /format=|fm=|w=|width=/i.test(abs)) {
+        considerUrlCandidate(abs);
+      }
+    }
+  }
+
+  async function collectFromJsText(jsText, baseUrl) {
+    const found = extractUrlsFromText(jsText);
+    for (const u of found) {
+      if (urlCandidates.size > MAX_URL_CANDIDATES) break;
+      const abs = resolveToAbs(baseUrl, u);
+      if (!abs) continue;
+      if (looksLikeImageUrl(abs)) considerUrlCandidate(abs);
+    }
+  }
+
+  async function downloadAndConsider(url, minBytes, signal) {
+    ensureNotCanceled(job);
+    try {
+      await assertUrlAllowed(url);
+    } catch {
+      return;
+    }
+
+    // HEAD best effort per filtro size/tipo
+    try {
+      const head = await fetchWithTimeout(url, 12000, signal, "HEAD");
+      const ct = (head.headers.get("content-type") || "").toLowerCase();
+      const cl = Number(head.headers.get("content-length") || 0);
+      if (ct && !ct.includes("image/")) return;
+      if (minBytes && cl && cl < minBytes) return;
+    } catch {
+      // ignore
+    }
+
+    const r = await downloadBinary(url, signal, 0);
+    if (!r) return;
+    if (r.contentType && !r.contentType.includes("image/")) return;
+    if (minBytes && r.buf.length < minBytes) return;
+
+    considerBufferCandidate({ url, buf: r.buf, contentType: r.contentType });
+  }
+
+  async function downloadTextAsset(url, signal) {
+    // usato per CSS/JS: limita dimensione
+    ensureNotCanceled(job);
+    try {
+      await assertUrlAllowed(url);
+    } catch {
+      return null;
+    }
+    const r = await downloadBinary(url, signal, MAX_TEXT_ASSET_BYTES);
+    if (!r) return null;
+    // solo testi
+    const ct = r.contentType || "";
+    if (
+      !(ct.includes("text/") || ct.includes("javascript") || ct.includes("ecmascript") || ct.includes("json") || ct.includes("css"))
+    ) {
+      // se content-type è vuoto o generico, proviamo lo stesso ma con cap già applicato
+    }
+    return r.buf.toString("utf-8");
+  }
 
   try {
     const mode = body.mode || (body.url ? "single" : null);
@@ -1032,6 +1166,10 @@ async function runImagesJob(job, body) {
 
     browser = await chromium.launch({ headless: true, args: launchArgsForOs() });
     job.browserRef = browser;
+
+    // tmp dir
+    job.tmpDir = path.join(os.tmpdir(), `site2images-${job.id}`);
+    fs.mkdirSync(job.tmpDir, { recursive: true });
 
     // 1) URLs
     let urls = [];
@@ -1046,7 +1184,7 @@ async function runImagesJob(job, body) {
       updateJob(job, { message: "1 pagina in coda", percent: 8, total: 1, current: 0 });
     } else if (mode === "list") {
       if (!Array.isArray(body.urls)) throw new Error("Manca urls (array)");
-      urls = body.urls.map((u) => normalizeUrl(String(u).trim())).filter(Boolean).slice(0, 30);
+      urls = body.urls.map((u) => normalizeUrl(String(u).trim())).filter(Boolean).slice(0, 40);
       if (!urls.length) throw new Error("Lista vuota");
       for (const u of urls) await assertUrlAllowed(u);
       nameBase = "lista";
@@ -1066,12 +1204,12 @@ async function runImagesJob(job, body) {
         startUrl,
         { maxPages: body.maxPages ?? 25, maxDepth: body.maxDepth ?? 2, includePatterns, excludePatterns },
         (p) => {
-          const crawlPct = 6 + Math.min(16, Math.round((p.current / p.total) * 16));
+          const crawlPct = 6 + Math.min(18, Math.round((p.current / p.total) * 18));
           updateJob(job, {
             message: p.message,
             percent: crawlPct,
             current: p.current,
-            total: Math.min(Number(body.maxPages) || 25, 60),
+            total: Math.min(Number(body.maxPages) || 25, 80),
           });
         }
       );
@@ -1081,7 +1219,7 @@ async function runImagesJob(job, body) {
 
       updateJob(job, {
         message: `Trovate ${urls.length} pagine. Cerco immagini...`,
-        percent: 22,
+        percent: 24,
         total: urls.length,
         current: 0,
       });
@@ -1091,22 +1229,79 @@ async function runImagesJob(job, body) {
 
     ensureNotCanceled(job);
 
-    // 2) Estrai URL immagini (JS on)
+    // ZIP output
+    const zipFileName = `${safeFilename(nameBase)}.zip`;
+    const zipPath = path.join(os.tmpdir(), `${job.id}-${zipFileName}`);
+    job.zipPath = zipPath;
+    job.filename = zipFileName;
+
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver("zip", { zlib: { level: 6 } });
+
+    archive.on("warning", (err) => console.warn("ARCHIVER warning:", err?.message || err));
+    archive.on("error", (err) => {
+      console.error("ARCHIVER error:", err?.message || err);
+      try {
+        output.destroy(err);
+      } catch {}
+    });
+
+    archive.pipe(output);
+
+    // Abort controller per fetch manuali
+    const abortController = new AbortController();
+    job.abortController = abortController;
+
+    // 2) Setup pages + response listener
     const pageWorkers = Math.min(CONCURRENCY, urls.length);
-    const pages = await Promise.all(
-      Array.from({ length: pageWorkers }, () => browser.newPage({ javaScriptEnabled: true }))
+    const pages = await Promise.all(Array.from({ length: pageWorkers }, () => browser.newPage({ javaScriptEnabled: true })));
+
+    await Promise.all(
+      pages.map(async (p) => {
+        // performance: blocca media/font, tracker
+        await p.route("**/*", (route) => {
+          const req = route.request();
+          const type = req.resourceType();
+          const url = req.url();
+
+          if (shouldAbortTracker(url)) return route.abort();
+          if (["media", "font"].includes(type)) return route.abort();
+
+          return route.continue();
+        });
+
+        // Cattura immagini dalle response (incl. CSS background / fetch / xhr)
+        p.on("response", async (resp) => {
+          try {
+            if (job.cancelRequested) return;
+            if (job.status !== "running") return;
+
+            const headers = resp.headers();
+            const ct = String(headers["content-type"] || "").toLowerCase();
+            if (!ct.startsWith("image/")) return;
+
+            const cl = Number(headers["content-length"] || 0);
+            if (minBytes && cl && cl < minBytes) return;
+
+            const buf = await resp.body();
+            if (!buf || !buf.length) return;
+            if (minBytes && buf.length < minBytes) return;
+
+            considerBufferCandidate({ url: resp.url(), buf, contentType: ct });
+          } catch {}
+        });
+      })
     );
-    await Promise.all(pages.map((p) => configureBlocking(p, "safe")));
 
+    // 3) Scan pages: DOM + CSS + JS + data:image
     let scannedPages = 0;
-    const imageUrlSet = new Set();
 
-    await runWithWorkerPool(urls, pageWorkers, async (u, idx, wid) => {
+    await runWithWorkerPool(urls, pageWorkers, async (pageUrl, idx, wid) => {
       ensureNotCanceled(job);
 
       updateJob(job, {
-        message: `Scansiono immagini ${scannedPages + 1}/${urls.length}...`,
-        percent: 22 + Math.round((scannedPages / Math.max(1, urls.length)) * 35),
+        message: `Scansiono pagina ${scannedPages + 1}/${urls.length} (DOM/CSS/JS + caroselli + lazy)...`,
+        percent: 24 + Math.round((scannedPages / Math.max(1, urls.length)) * 40),
         current: scannedPages,
         total: urls.length,
       });
@@ -1114,147 +1309,335 @@ async function runImagesJob(job, body) {
       const p = pages[wid];
 
       try {
-        await p.goto(u, { waitUntil: "domcontentloaded", timeout: GOTO_TIMEOUT_SAFE });
-        try {
-          await p.waitForLoadState("networkidle", { timeout: 2000 });
-        } catch {}
-        const imgs = await extractImageUrls(p, u);
-        imgs.forEach((x) => imageUrlSet.add(x));
+        await p.setViewportSize({ width: 1365, height: 900 });
       } catch {}
 
-      scannedPages++;
+      try {
+        await p.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: GOTO_TIMEOUT_SAFE });
+
+        // lascia montare SPA/lazy
+        try {
+          await p.waitForLoadState("networkidle", { timeout: 3500 });
+        } catch {}
+        try {
+          await p.waitForTimeout(700);
+        } catch {}
+
+        // prime lazy
+        await primeLazy(p);
+
+        // scroll + caroselli
+        await autoScroll(p);
+        await clickCarouselLike(p);
+        await autoScroll(p);
+
+        // ---------- DOM candidates ----------
+        const domData = await p.evaluate(() => {
+          const outUrls = new Set();
+          const outData = new Set();
+
+          const pickBestFromSrcset = (srcset) => {
+            if (!srcset || typeof srcset !== "string") return null;
+            const items = srcset
+              .split(",")
+              .map((x) => x.trim())
+              .map((x) => {
+                const [u, d] = x.split(/\s+/);
+                if (!u) return null;
+                let score = 0;
+                if (d) {
+                  if (d.endsWith("w")) score = parseInt(d, 10) || 0;
+                  else if (d.endsWith("x")) score = Math.round((parseFloat(d) || 0) * 100000);
+                } else score = 1;
+                return { u, score };
+              })
+              .filter(Boolean);
+            if (!items.length) return null;
+            items.sort((a, b) => b.score - a.score);
+            return items[0].u;
+          };
+
+          const firstNonEmpty = (...vals) => {
+            for (const v of vals) {
+              if (typeof v === "string" && v.trim()) return v.trim();
+            }
+            return null;
+          };
+
+          const pushMaybe = (u) => {
+            if (!u) return;
+            const s = String(u).trim();
+            if (!s) return;
+            if (s.startsWith("data:image/")) outData.add(s);
+            else outUrls.add(s);
+          };
+
+          const pickBestImgUrl = (img) => {
+            const ss =
+              img.getAttribute("data-srcset") ||
+              img.getAttribute("data-lazy-srcset") ||
+              img.getAttribute("data-srcset2") ||
+              img.getAttribute("srcset");
+
+            const bestFromSs = pickBestFromSrcset(ss);
+
+            const dataOriginal = img.getAttribute("data-original");
+            const dataSrc = img.getAttribute("data-src");
+            const dataLazy = img.getAttribute("data-lazy-src");
+            const dataUrl = img.getAttribute("data-url");
+            const src = img.getAttribute("src");
+
+            return firstNonEmpty(bestFromSs, dataOriginal, dataSrc, dataLazy, dataUrl, src);
+          };
+
+          const pickBestPictureUrl = (picture) => {
+            const candidates = [];
+            picture.querySelectorAll("source").forEach((s) => {
+              const ss = s.getAttribute("srcset");
+              const best = pickBestFromSrcset(ss);
+              if (best) candidates.push(best);
+            });
+            const img = picture.querySelector("img");
+            if (img) {
+              const bestImg = pickBestImgUrl(img);
+              if (bestImg) candidates.push(bestImg);
+            }
+            return candidates[0] || null;
+          };
+
+          document.querySelectorAll("picture").forEach((pic) => pushMaybe(pickBestPictureUrl(pic)));
+          document.querySelectorAll("img").forEach((img) => {
+            if (img.closest("picture")) return;
+            pushMaybe(pickBestImgUrl(img));
+          });
+
+          // og/twitter images
+          document.querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]').forEach((m) => pushMaybe(m.getAttribute("content")));
+
+          // icons / apple touch icons
+          document
+            .querySelectorAll('link[rel~="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"], link[rel="mask-icon"]')
+            .forEach((l) => pushMaybe(l.getAttribute("href")));
+
+          // inline style url(...)
+          document.querySelectorAll("[style]").forEach((el) => {
+            const st = el.getAttribute("style") || "";
+            const re = /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi;
+            for (let m; (m = re.exec(st)); ) pushMaybe(m[1]);
+          });
+
+          // computed background-image (limite per performance)
+          const els = Array.from(document.querySelectorAll("*")).slice(0, 4000);
+          for (const el of els) {
+            const bg = getComputedStyle(el).backgroundImage || "";
+            const re = /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi;
+            for (let m; (m = re.exec(bg)); ) pushMaybe(m[1]);
+          }
+
+          // inline <style> text
+          document.querySelectorAll("style").forEach((st) => {
+            const txt = st.textContent || "";
+            const re = /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi;
+            for (let m; (m = re.exec(txt)); ) pushMaybe(m[1]);
+          });
+
+          // linked CSS and scripts
+          const cssLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"][href]')).map((x) => x.getAttribute("href")).filter(Boolean);
+          const scriptSrcs = Array.from(document.querySelectorAll("script[src]")).map((x) => x.getAttribute("src")).filter(Boolean);
+          const inlineScripts = Array.from(document.querySelectorAll("script:not([src])"))
+            .map((s) => s.textContent || "")
+            .filter((t) => t && t.length);
+
+          return {
+            urls: Array.from(outUrls),
+            dataImages: Array.from(outData),
+            cssLinks,
+            scriptSrcs,
+            inlineScripts,
+          };
+        });
+
+        // data:image inline
+        for (const d of domData.dataImages) considerDataImage(d);
+
+        // resolve DOM urls to absolute
+        for (const u of domData.urls) {
+          if (urlCandidates.size > MAX_URL_CANDIDATES) break;
+          const abs = resolveToAbs(pageUrl, u);
+          if (abs) considerUrlCandidate(abs);
+        }
+
+        // ---------- CSS files ----------
+        for (const cssHref of domData.cssLinks.slice(0, 120)) {
+          if (urlCandidates.size > MAX_URL_CANDIDATES) break;
+          const absCss = resolveToAbs(pageUrl, cssHref);
+          if (!absCss) continue;
+
+          const cssText = await downloadTextAsset(absCss, abortController.signal);
+          if (!cssText) continue;
+
+          await collectFromCssText(cssText, absCss);
+        }
+
+        // ---------- Inline scripts ----------
+        for (const scr of domData.inlineScripts.slice(0, 40)) {
+          if (urlCandidates.size > MAX_URL_CANDIDATES) break;
+          await collectFromJsText(scr, pageUrl);
+        }
+
+        // ---------- External scripts ----------
+        for (const jsSrc of domData.scriptSrcs.slice(0, 120)) {
+          if (urlCandidates.size > MAX_URL_CANDIDATES) break;
+          const absJs = resolveToAbs(pageUrl, jsSrc);
+          if (!absJs) continue;
+
+          const jsText = await downloadTextAsset(absJs, abortController.signal);
+          if (!jsText) continue;
+
+          await collectFromJsText(jsText, absJs);
+        }
+      } catch {
+        // ignore page errors
+      } finally {
+        scannedPages++;
+      }
+
       return null;
     });
 
+    // cleanup pages routes and close
+    for (const p of pages) {
+      try {
+        await p.unroute("**/*");
+      } catch {}
+    }
     await Promise.all(pages.map((p) => p.close()));
 
-let imageUrls = Array.from(imageUrlSet);
+    ensureNotCanceled(job);
 
-// qui tieni solo la versione "migliore" per ogni immagine
-imageUrls = dedupeBestImages(imageUrls);
+    // 4) Download best URL per canonical key (manual fetch) — massima qualità
+    const uniqueBestUrls = Array.from(urlCandidates.values())
+      .map((x) => x.url)
+      .filter(Boolean);
 
-const foundTotal = imageUrls.length;
+    // dedupe by canonical key again (should already)
+    const bestUrlByKey = new Map();
+    for (const u of uniqueBestUrls) {
+      const k = canonicalImageKey(u);
+      const s = scoreImageUrl(u);
+      const prev = bestUrlByKey.get(k);
+      if (!prev || s > prev.s) bestUrlByKey.set(k, { url: u, s });
+    }
+    const finalUrlList = Array.from(bestUrlByKey.values()).map((x) => x.url);
 
-    if (!foundTotal) throw new Error("Nessuna immagine trovata");
+    updateJob(job, {
+      message: `Download immagini (best quality) da URL trovate: ${finalUrlList.length}...`,
+      percent: 66,
+      current: 0,
+      total: finalUrlList.length,
+    });
+
+    let processed = 0;
+
+    await runWithWorkerPool(finalUrlList, Math.min(IMG_DL_CONCURRENCY, Math.max(1, finalUrlList.length)), async (imgUrl) => {
+      ensureNotCanceled(job);
+
+      updateJob(job, {
+        message: `Scarico best ${processed + 1}/${finalUrlList.length}... (salvate finora: ${bestByKey.size})`,
+        percent: 66 + Math.round((processed / Math.max(1, finalUrlList.length)) * 26),
+        current: processed,
+        total: finalUrlList.length,
+      });
+
+      try {
+        await downloadAndConsider(imgUrl, minBytes, abortController.signal);
+      } catch {
+        // ignore
+      } finally {
+        processed++;
+      }
+      return null;
+    });
 
     ensureNotCanceled(job);
-updateJob(job, {
-  message: `Trovate ${foundTotal} immagini. Download + ZIP (min ${minKB}KB)...`,
-  percent: 60,
-  current: 0,
-  total: foundTotal,
-});
 
-// 3) ZIP su disco (ANTI-FREEZE)
-const zipFileName = `${safeFilename(nameBase)}.zip`;
-const zipPath = path.join(os.tmpdir(), `${job.id}-${zipFileName}`);
-job.zipPath = zipPath;
-job.filename = zipFileName;
+    // 5) Se non abbiamo nulla -> errore
+    const savedCount = bestByKey.size;
+    if (savedCount === 0) throw new Error("Nessuna immagine salvata (il sito potrebbe bloccare hotlink/CORS o non caricare immagini)");
 
-const output = fs.createWriteStream(zipPath);
-const archive = archiver("zip", { zlib: { level: 6 } });
-job.zipArchive = archive;
-job.zipOutput = output;
+    // 6) Build ZIP (numerazione stabile, dedupe già fatto)
+    updateJob(job, {
+      message: `Creo ZIP... (immagini uniche migliori: ${savedCount})`,
+      percent: 94,
+      current: 0,
+      total: savedCount,
+    });
 
+    // ordina per dimensione decrescente (prima le più grosse)
+    const items = Array.from(bestByKey.values()).sort((a, b) => (b.bytes || 0) - (a.bytes || 0));
 
-archive.on("warning", (err) => console.warn("ARCHIVER warning:", err?.message || err));
-archive.on("error", (err) => {
-  console.error("ARCHIVER error:", err?.message || err);
-  try { output.destroy(err); } catch {}
-});
+    let n = 0;
+    for (const it of items) {
+      ensureNotCanceled(job);
+      n++;
 
-archive.pipe(output);
+      const ext = it.ext || "img";
+      const fileName = `${String(n).padStart(5, "0")}.${ext}`;
+      archive.file(it.filePath, { name: `${safeFilename(nameBase)}/${fileName}` });
 
-// controller per abort dei fetch (serve anche per stop)
-const abortController = new AbortController();
-job.abortController = abortController;
+      if (n % 25 === 0) {
+        updateJob(job, {
+          message: `Creo ZIP... ${n}/${savedCount}`,
+          percent: 94 + Math.round((n / Math.max(1, savedCount)) * 5),
+          current: n,
+          total: savedCount,
+        });
+      }
+    }
 
-let processed = 0;
-let downloaded = 0;
-
-await runWithWorkerPool(imageUrls, Math.min(CONCURRENCY, 8), async (imgUrl) => {
-  ensureNotCanceled(job);
-
-  updateJob(job, {
-    message: `Scarico immagini ${processed + 1}/${foundTotal}... (salvate: ${downloaded})`,
-    percent: 60 + Math.round((processed / Math.max(1, foundTotal)) * 35),
-    current: processed,
-    total: foundTotal,
-  });
-
-  try {
-    const r = await downloadImageIfBigEnough(imgUrl, minBytes, abortController.signal);
-    if (!r) return null;
-
-    const u = new URL(imgUrl);
-    const baseName = (u.pathname.split("/").pop() || "image").split("?")[0] || "image";
-    const cleanBase = baseName.replace(/[^a-z0-9._-]+/gi, "-").slice(0, 80) || "image";
-
-    const ext = extFromUrl(imgUrl) || extFromContentType(r.contentType) || "img";
-    const finalFile = cleanBase.includes(".") ? cleanBase : `${cleanBase}.${ext}`;
-
-    const numbered = `${String(downloaded).padStart(4, "0")}-${finalFile}`;
-    archive.append(r.buf, { name: `${safeFilename(nameBase)}/${numbered}` });
-
-    downloaded++;
-  } catch {
-    // skip
-  } finally {
-    processed++;
-  }
-
-  return null;
-});
-
-// finalize (aspetta che il file sia chiuso davvero)
-await new Promise((resolve, reject) => {
-  output.on("close", resolve);
-  output.on("finish", resolve);
-  output.on("error", reject);
-  archive.on("error", reject);
-  archive.finalize();
-});
-
-// qui sotto DEVE esserci il tuo updateJob done (quello che avevi)
-
-
+    // finalize zip
+    await new Promise((resolve, reject) => {
+      output.on("close", resolve);
+      output.on("finish", resolve);
+      output.on("error", reject);
+      archive.on("error", reject);
+      archive.finalize();
+    });
 
     updateJob(job, {
       status: "done",
-      message: `ZIP pronto ✅ (salvate: ${downloaded}/${foundTotal})`,
+      message: `ZIP pronto ✅ (immagini uniche migliori: ${savedCount})`,
       percent: 100,
-      current: foundTotal,
-      total: foundTotal,
+      current: savedCount,
+      total: savedCount,
     });
   } catch (e) {
     job.error = String(e?.message || e);
     updateJob(job, { status: "error", message: job.error, percent: 100 });
   } finally {
-    // pulizia riferimenti (STOP/fetch abort)
-    try { job.abortController?.abort(); } catch {}
-    try { job.zipArchive?.abort(); } catch {}
-try { job.zipOutput?.destroy(); } catch {}
+    // STOP/fetch abort
+    try {
+      job.abortController?.abort();
+    } catch {}
+    job.abortController = null;
 
-job.abortController = null;
-job.zipArchive = null;
-job.zipOutput = null;
-
-
-
-if (job.status !== "done" && job.zipPath) {
-  try { fs.unlinkSync(job.zipPath); } catch {}
-  job.zipPath = null;
-}
-
+    // close browser
     job.browserRef = null;
     if (browser) {
       try {
         await browser.close();
       } catch {}
     }
+
+    // cleanup tmp on error
+    if (job.status !== "done" && job.tmpDir) {
+      try {
+        fs.rmSync(job.tmpDir, { recursive: true, force: true });
+      } catch {}
+      job.tmpDir = null;
+    }
   }
 }
-
 
 // -----------------------
 // API
@@ -1273,7 +1656,7 @@ app.post("/api/images/start", (req, res) => {
   res.json({ jobId: job.id });
 });
 
-// SSE events (vale per qualunque job)
+// SSE events
 app.get("/api/events/:jobId", (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) return res.status(404).end();
@@ -1296,7 +1679,7 @@ app.get("/api/events/:jobId", (req, res) => {
   req.on("close", () => job.sseClients.delete(res));
 });
 
-// STOP (vale per qualunque job)
+// STOP
 app.post("/api/stop/:jobId", async (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: "Job non trovato" });
@@ -1304,7 +1687,11 @@ app.post("/api/stop/:jobId", async (req, res) => {
   if (job.status !== "running") return res.json({ ok: true, status: job.status });
 
   job.cancelRequested = true;
-  try { job.abortController?.abort(); } catch {}
+
+  try {
+    job.abortController?.abort();
+  } catch {}
+
   updateJob(job, { status: "error", message: "Job annullato.", percent: job.percent });
 
   try {
@@ -1350,9 +1737,19 @@ app.get("/api/images/download/:jobId", (req, res) => {
   rs.pipe(res);
 
   rs.on("close", () => {
+    // cleanup zip + tmp
     if (FREE_AFTER_DOWNLOAD) {
-      try { fs.unlinkSync(job.zipPath); } catch {}
+      try {
+        fs.unlinkSync(job.zipPath);
+      } catch {}
       job.zipPath = null;
+
+      if (job.tmpDir) {
+        try {
+          fs.rmSync(job.tmpDir, { recursive: true, force: true });
+        } catch {}
+        job.tmpDir = null;
+      }
     }
   });
 });
@@ -1361,5 +1758,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-
