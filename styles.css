@@ -82,7 +82,7 @@ button{
   position: relative;
   left: 0;
   right: 0;
-  top: var(--header-top);
+  top: 0;
   z-index: 30;
   text-align: center;
   pointer-events:none;
