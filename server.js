@@ -713,8 +713,8 @@ async function crawlSite(browser, startUrl, { maxPages, maxDepth, includePattern
   const queue = [{ url: normalizeUrl(startUrl), depth: 0 }].filter(Boolean);
   const results = [];
 
-  const page = await browser.newPage({ javaScriptEnabled: false });
-  await configureBlocking(page, "fast");
+  const page = await browser.newPage({ javaScriptEnabled: true });
+  await configureBlocking(page, "safe");
 
   while (queue.length && results.length < maxPages) {
     const item = queue.shift();
@@ -741,8 +741,17 @@ async function crawlSite(browser, startUrl, { maxPages, maxDepth, includePattern
     if (depth >= maxDepth) continue;
 
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
-      const links = await extractInternalLinks(page, startUrl);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+
+// dai tempo alle SPA (React) di montare e creare i link
+try {
+  await page.waitForLoadState("networkidle", { timeout: 2500 });
+} catch {}
+try {
+  await page.waitForTimeout(700);
+} catch {}
+
+const links = await extractInternalLinks(page, startUrl);
 
       for (const link of links) {
         if (results.length + queue.length >= maxPages * 3) break;
