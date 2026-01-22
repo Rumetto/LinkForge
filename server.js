@@ -927,8 +927,8 @@ setInterval(() => {
 // -----------------------
 async function runPdfJob(job, body) {
   let browser;
-  let context;
-
+  let fastContext;
+  let safeContext;
   try {
     const mode = body.mode || (body.url ? "single" : null);
     if (!mode) throw new Error("Manca mode/url");
@@ -945,8 +945,9 @@ async function runPdfJob(job, body) {
   ],
 });
 
-    job.browserRef = browser;
-    context = await browser.newContext({
+job.browserRef = browser;
+
+const contextOptions = {
   locale: "it-IT",
   timezoneId: "Europe/Rome",
   viewport: { width: 1365, height: 900 },
@@ -955,13 +956,27 @@ async function runPdfJob(job, body) {
   extraHTTPHeaders: {
     "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
   },
+};
+
+fastContext = await browser.newContext({
+  ...contextOptions,
+  javaScriptEnabled: false,
 });
 
-await context.addInitScript(() => {
+safeContext = await browser.newContext({
+  ...contextOptions,
+  javaScriptEnabled: true,
+});
+
+// anti-bot init script: lo mettiamo su ENTRAMBI
+const antiBotScript = () => {
   Object.defineProperty(navigator, "webdriver", { get: () => undefined });
   Object.defineProperty(navigator, "languages", { get: () => ["it-IT", "it", "en-US", "en"] });
   Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
-});
+};
+
+await fastContext.addInitScript(antiBotScript);
+await safeContext.addInitScript(antiBotScript);
 
 
     // 1) URLs
@@ -1023,16 +1038,14 @@ await context.addInitScript(() => {
     // 2) Worker pages: una coppia per worker
     const workerCount = Math.min(CONCURRENCY, urls.length);
 
-    const fastPages = await Promise.all(
-  Array.from({ length: workerCount }, () => context.newPage())
-);
-const safePages = await Promise.all(
-  Array.from({ length: workerCount }, () => context.newPage())
+const fastPages = await Promise.all(
+  Array.from({ length: workerCount }, () => fastContext.newPage())
 );
 
-// disabilita JS solo sulle fast
-await Promise.all(fastPages.map((p) => p.setJavaScriptEnabled(false)));
-await Promise.all(safePages.map((p) => p.setJavaScriptEnabled(true)));
+const safePages = await Promise.all(
+  Array.from({ length: workerCount }, () => safeContext.newPage())
+);
+
 
 
     await Promise.all(fastPages.map((p) => configureBlocking(p, "fast")));
@@ -1076,8 +1089,8 @@ await Promise.all(safePages.map((p) => p.setJavaScriptEnabled(true)));
 
     // 3) PDF
     const combinedHtml = buildCombinedHtml(sections);
-    const pdfPage = await context.newPage();
-await pdfPage.setJavaScriptEnabled(false);
+const pdfPage = await fastContext.newPage();
+
 
     await pdfPage.emulateMedia({ media: "screen" });
     await pdfPage.setContent(combinedHtml, { waitUntil: "domcontentloaded", timeout: 25000 });
@@ -1098,13 +1111,17 @@ await pdfPage.setJavaScriptEnabled(false);
   } catch (e) {
     job.error = String(e?.message || e);
     updateJob(job, { status: "error", message: job.error, percent: 100 });
- } finally {
+} finally {
   job.browserRef = null;
-  try { await context?.close(); } catch {}
+
+  try { await fastContext?.close(); } catch {}
+  try { await safeContext?.close(); } catch {}
+
   if (browser) {
     try { await browser.close(); } catch {}
   }
 }
+
 
 }
 
