@@ -34,8 +34,8 @@
   --containerW: 860px;
 
   --header-top: 16px;
-  --header-reserve: 140px;   /* spazio “reale” per header */
-  --gap-under-header: 12px;
+  --header-reserve: 70px;   /* spazio “reale” per header */
+  --gap-under-header: 4px;
 
   --pad-x: 16px;
   --pad-b: 16px;
@@ -86,7 +86,7 @@ button{
   z-index: 30;
   text-align: center;
   pointer-events:none;
-  border:3px solid black;
+  
 }
 .header *{ pointer-events:auto; }
 
