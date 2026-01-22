@@ -43,8 +43,6 @@ const FREE_AFTER_DOWNLOAD = String(process.env.FREE_AFTER_DOWNLOAD || "1") !== "
 const IMG_DL_CONCURRENCY = Math.max(1, Math.min(Number(process.env.IMG_DL_CONCURRENCY || 8), 16));
 const MAX_TEXT_ASSET_BYTES = Math.max(200_000, Math.min(Number(process.env.MAX_TEXT_ASSET_BYTES || 2_000_000), 10_000_000)); // CSS/JS max bytes to parse
 const MAX_URL_CANDIDATES = Math.max(2_000, Math.min(Number(process.env.MAX_URL_CANDIDATES || 30_000), 200_000)); // safety
-const MAX_FETCH_REDIRECTS = Math.max(3, Math.min(Number(process.env.MAX_FETCH_REDIRECTS || 5), 15));
-
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -479,10 +477,10 @@ async function extractSectionAuto(job, fastPage, safePage, url) {
   // SAFE
   await safePage.goto(url, { waitUntil: "domcontentloaded", timeout: GOTO_TIMEOUT_SAFE });
   try {
-    await safePage.waitForLoadState("networkidle", { timeout: 15000 });
+    await safePage.waitForLoadState("networkidle", { timeout: 3000 });
   } catch {}
   try {
-    await safePage.waitForTimeout(1700);
+    await safePage.waitForTimeout(700);
   } catch {}
 
   ensureNotCanceled(job);
@@ -639,7 +637,7 @@ function dataUrlToBuffer(dataUrl) {
 // -----------------------
 // Fetch helpers (Node 18+)
 // -----------------------
-async function fetchWithTimeout(url, ms, signal, method = "GET", maxRedirects = MAX_FETCH_REDIRECTS) {
+async function fetchWithTimeout(url, ms, signal, method = "GET") {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), ms);
 
@@ -650,47 +648,21 @@ async function fetchWithTimeout(url, ms, signal, method = "GET", maxRedirects = 
       ? signal
       : controller.signal;
 
-  const headers = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
-    Accept: "*/*",
-  };
-
   try {
-    let currentUrl = url;
-    let currentMethod = method;
-
-    for (let hop = 0; hop <= maxRedirects; hop++) {
-      // valida OGNI hop (SSRF-safe)
-      await assertUrlAllowed(currentUrl);
-
-      const res = await fetch(currentUrl, {
-        method: currentMethod,
-        signal: sig,
-        redirect: "manual", // <--- IMPORTANTISSIMO
-        headers,
-      });
-
-      // non redirect -> fine
-      if (![301, 302, 303, 307, 308].includes(res.status)) return res;
-
-      const loc = res.headers.get("location");
-      if (!loc) return res;
-
-      const nextUrl = new URL(loc, currentUrl).toString();
-
-      // 303: forza GET (comportamento standard)
-      if (res.status === 303) currentMethod = "GET";
-
-      currentUrl = nextUrl;
-    }
-
-    throw new Error(`Troppi redirect (>${maxRedirects})`);
+    return await fetch(url, {
+      method,
+      signal: sig,
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
+        Accept: "*/*",
+      },
+    });
   } finally {
     clearTimeout(t);
   }
 }
-
 
 async function downloadBinary(url, signal, maxBytes = 0) {
   // maxBytes=0 -> no cap (ma non consigliato per roba non immagine)
@@ -775,10 +747,10 @@ async function crawlSite(browser, startUrl, { maxPages, maxDepth, includePattern
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
       try {
-        await page.waitForLoadState("networkidle", { timeout: 15000 });
+        await page.waitForLoadState("networkidle", { timeout: 3000 });
       } catch {}
       try {
-        await page.waitForTimeout(1700);
+        await page.waitForTimeout(700);
       } catch {}
 
       const links = await extractInternalLinks(page, startUrl);
@@ -1146,8 +1118,7 @@ async function runImagesJob(job, body) {
 
     // HEAD best effort per filtro size/tipo
     try {
-      const head = await fetchWithTimeout(url, 12000, signal, "HEAD", MAX_FETCH_REDIRECTS);
-
+      const head = await fetchWithTimeout(url, 12000, signal, "HEAD");
       const ct = (head.headers.get("content-type") || "").toLowerCase();
       const cl = Number(head.headers.get("content-length") || 0);
       if (ct && !ct.includes("image/")) return;
@@ -1346,10 +1317,10 @@ async function runImagesJob(job, body) {
 
         // lascia montare SPA/lazy
         try {
-          await p.waitForLoadState("networkidle", { timeout: 15000 });
+          await p.waitForLoadState("networkidle", { timeout: 3500 });
         } catch {}
         try {
-          await p.waitForTimeout(1700);
+          await p.waitForTimeout(700);
         } catch {}
 
         // prime lazy
