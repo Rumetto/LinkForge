@@ -1300,7 +1300,7 @@ async function runImagesJob(job, body) {
       ensureNotCanceled(job);
 
       updateJob(job, {
-        message: `Scansiono pagina ${scannedPages + 1}/${urls.length} (DOM/CSS/JS + caroselli + lazy)...`,
+        message: `Scansiono pagina ${scannedPages + 1}/${urls.length}`,
         percent: 24 + Math.round((scannedPages / Math.max(1, urls.length)) * 40),
         current: scannedPages,
         total: urls.length,
